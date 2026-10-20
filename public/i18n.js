@@ -3,6 +3,22 @@ window.I18N = {
   he: {
     dir: 'rtl',
     os_name: 'MEDI-OS', os_sub: 'מערכת הפעלה למוקד רפואי · גרסה 1.987',
+    game_mode: 'מצב משחק', mode_mixed: 'משולב', mode_heart: 'לב וכלי דם', mode_classic: 'קלאסי',
+    mode_mixed_d: 'חצי מהשיחות מהדמויות החדשות (לב וכלי דם) וחצי מהקלאסיות.',
+    mode_heart_d: 'רק הדמויות החדשות, לפי אחוזי ההופעה: סבתא רוזה 23%, שמעון 18%, יאנקל 14%, גדי 10%, בטי 8%, הנוב 9%, ג\'ורג\' 7%, אבא נמלה 6%, אמא לוויתן 5%.',
+    mode_classic_d: 'רק הדמויות המקוריות (סבתא רינה, השף אבי ועוד).',
+    mda_tab_file: 'תיק רפואי', mda_tab_heart: 'לב וכלי דם', mda_tab_first: 'עזרה ראשונה',
+    file_no_patient: 'אין כרגע מטופל שמחכה לבדיקת תיק.', file_ask_first: '{name} על הקו — בקשו קודם את מספר קופת החולים.',
+    file_type_number: 'הקלידו את מספר קופת החולים של {name} ולחצו חיפוש.', file_opened: 'התיק נפתח — חזרו לשיחה כדי לענות.',
+    fund_number: 'מספר קופת חולים', file_search: 'חיפוש', file_badge: 'תיק פתוח', file_complaint: 'בתיק', file_question: 'הבעיה',
+    back_to_call: 'חזרה לשיחה', mc_world: 'עולם המיינקראפט', stay_noob: 'נשארת כאן. הנוב חזר לעולם שלו… בינתיים.',
+    back_earth_mc: 'חוזרים מעולם הקוביות ▦', launch_mc: 'שיגור לעולם המיינקראפט',
+    reward_tag: 'תגמול', coins: 'מטבעות', bonus: 'בונוס', heart_saved: 'הצלחת לעזור! ✓',
+    heart_hung: 'ניתקת את השיחה.', heart_failed: 'המטופל לא קיבל את העזרה שהיה צריך.', heart_no_reward: 'אין תגמול הפעם.',
+    ask_fund: 'בקש מספר קופת חולים', fund_says: 'בטח! מספר קופת החולים שלי:', step_open_mda: 'פתחו את אפליקציית מד"א › תיק רפואי',
+    step_type_number: 'הקלידו את המספר ולחצו חיפוש', open_mda_file: 'פתח תיק רפואי במד"א',
+    tries_left: 'נותרו {n} ניסיונות', free_ph: 'או כתבו לו הנחיה במילים שלכם…', hang_up: 'נתק שיחה',
+    heart_callers: 'דמויות לב וכלי דם', mc_callers: 'עולם המיינקראפט', research: 'שאלות מחקר',
     boot: ['בודק זיכרון........ 640K תקין', 'מאתחל קווי טלפון... OK', 'טוען פרוטוקולי מד"א... OK', 'מתחבר למוקד הארצי... מחובר', 'משמרת מתחילה. בהצלחה, מוקדן/ית.'],
     create_group: 'יצירת משחק', join_room: 'כניסה למשחק',
     create_desc: 'למורה / למארח: קובעים זמן, מציגים ברקוד ומתחילים את המשחק.',
@@ -62,12 +78,28 @@ window.I18N = {
       room_not_found: 'החדר לא נמצא. בדקו את המספר.', name_short: 'שם קצר מדי (לפחות 2 תווים).', name_taken: 'השם כבר תפוס בחדר.',
       name_reported: 'השם הזה דווח. בחרו שם אחר.', bad_duration: 'זמן לא תקין (1–120 דקות).', game_over: 'המשחק בחדר הזה הסתיים.',
       room_full: 'החדר מלא.', muted: 'אתם מושתקים כרגע.', slow_down: 'לאט לאט… נסו שוב בעוד רגע.', claimed: 'מנהל אחר כבר מטפל בפנייה.',
-      not_allowed: 'אין הרשאה.', kicked: 'הוצאת מהחדר הזה.', offline: 'אין חיבור לשרת.', too_early: 'חכו שג\'ורג\' יסיים לדבר.', default: 'משהו השתבש. נסו שוב.'
+      not_allowed: 'אין הרשאה.', kicked: 'הוצאת מהחדר הזה.', offline: 'אין חיבור לשרת.', too_early: 'חכו שהדמות תסיים לדבר.', no_file: 'לא נמצא תיק עם המספר הזה. בדקו את המספר שהמטופל נתן.', ai_off: 'כתיבה חופשית לא פעילה — בחרו תשובה.', ai_failed: 'ה-AI לא הגיב. נסו שוב או בחרו תשובה.', bad_option: 'אי אפשר לבחור את זה.', default: 'משהו השתבש. נסו שוב.'
     }
   },
   en: {
     dir: 'ltr',
     os_name: 'MEDI-OS', os_sub: 'Medical Dispatch Operating System · v1.987',
+    game_mode: 'Game mode', mode_mixed: 'Mixed', mode_heart: 'Heart & vessels', mode_classic: 'Classic',
+    mode_mixed_d: 'Half the calls from the new heart & blood-vessel cast, half from the classic one.',
+    mode_heart_d: 'Only the new cast, at its odds: Rosa 23%, Shimon 18%, Yankel 14%, Gadi 10%, Betty 8%, Noob 9%, George 7%, Daddy Ant 6%, Mama Whale 5%.',
+    mode_classic_d: 'Only the original cast (Grandma Rina, Chef Avi and the rest).',
+    mda_tab_file: 'Medical file', mda_tab_heart: 'Heart & vessels', mda_tab_first: 'First aid',
+    file_no_patient: 'No patient is waiting for a file check right now.', file_ask_first: '{name} is on the line — ask for their health-fund number first.',
+    file_type_number: 'Type {name}\'s health-fund number and press Search.', file_opened: 'File opened — go back to the call to answer.',
+    fund_number: 'Health-fund number', file_search: 'Search', file_badge: 'Open file', file_complaint: 'In the file', file_question: 'The problem',
+    back_to_call: 'Back to the call', mc_world: 'Minecraft world', stay_noob: 'You stayed here. The Noob went back to his world… for now.',
+    back_earth_mc: 'Leaving the block world ▦', launch_mc: 'Launching to the Minecraft world',
+    reward_tag: 'Reward', coins: 'coins', bonus: 'bonus', heart_saved: 'You helped! ✓',
+    heart_hung: 'You hung up.', heart_failed: 'The patient didn\'t get the help they needed.', heart_no_reward: 'No reward this time.',
+    ask_fund: 'Ask for health-fund number', fund_says: 'Sure! My health-fund number is:', step_open_mda: 'Open the MDA app › Medical file',
+    step_type_number: 'Type the number and press Search', open_mda_file: 'Open medical file in MDA',
+    tries_left: '{n} tries left', free_ph: 'Or write your own guidance…', hang_up: 'Hang up',
+    heart_callers: 'Heart & vessel callers', mc_callers: 'Minecraft world', research: 'research questions',
     boot: ['Memory check........ 640K OK', 'Initialising phone lines... OK', 'Loading MDA protocols... OK', 'Linking national dispatch... ONLINE', 'Shift starting. Good luck, dispatcher.'],
     create_group: 'Create game', join_room: 'Join game',
     create_desc: 'For the teacher / host: set the time, show the QR code and start.',
@@ -121,7 +153,7 @@ window.I18N = {
       room_not_found: 'Room not found. Check the number.', name_short: 'Name too short (min 2 characters).', name_taken: 'That name is taken in this room.',
       name_reported: 'That name was reported. Pick another.', bad_duration: 'Invalid time (1–120 minutes).', game_over: 'The game in this room has ended.',
       room_full: 'The room is full.', muted: 'You are muted right now.', slow_down: 'Easy… try again in a moment.', claimed: 'Another manager is handling this request.',
-      not_allowed: 'Not allowed.', kicked: 'You were removed from this room.', offline: 'No connection to the server.', too_early: 'Wait for George to finish talking.', default: 'Something went wrong. Try again.'
+      not_allowed: 'Not allowed.', kicked: 'You were removed from this room.', offline: 'No connection to the server.', too_early: 'Wait for the character to finish talking.', no_file: 'No file with that number. Check the number the patient gave.', ai_off: 'Free writing is off — pick an answer.', ai_failed: 'The AI didn\'t answer. Try again or pick an answer.', bad_option: 'You can\'t pick that.', default: 'Something went wrong. Try again.'
     }
   }
 };

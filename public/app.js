@@ -11,7 +11,8 @@
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
   };
-  const ALL_CHARS = Object.fromEntries([...CT.REGULARS, ...CT.SPECIALS, ...CT.PLANET].map((c) => [c.id, c]));
+  const HT = window.HEART || { CAST: [], MINECRAFT: [], PLANET: [], INFO: [], MODES: ['classic'] };
+  const ALL_CHARS = Object.fromEntries([...CT.REGULARS, ...CT.SPECIALS, ...CT.PLANET, ...HT.CAST, ...HT.MINECRAFT, ...HT.PLANET].map((c) => [c.id, c]));
   const PROTO = Object.fromEntries(CT.PROTOCOLS.map((p) => [p.id, p]));
 
   // ───────────────────────── state ─────────────────────────
@@ -20,7 +21,7 @@
     view: null, homeMode: null, homeErr: '', online: false, room: null, me: null, prevPhase: null,
     chat: { global: [], help: [], lb: [] }, tickets: [], ticketMsgs: {}, chan: 'global', ticketOpen: null,
     unread: { global: 0, help: 0, lb: 0 }, showMembers: false,
-    call: null, callsTab: 'call', launching: false, typedFor: null, renderedKey: '',
+    call: null, callsTab: 'call', mdaTab: 'file', mdaFile: null, launching: false, typedFor: null, renderedKey: '',
     wins: {}, z: 10, gameover: null, kicked: false, booting: false,
     discovered: new Set(store.get('medios.discovered', [])), lastMoney: 0
   };
@@ -75,7 +76,7 @@
   // ───────────────────────── HOME ─────────────────────────
   const qsRoom = new URLSearchParams(location.search).get('room');
   if (qsRoom && /^\d{4,8}$/.test(qsRoom)) S.homeMode = 'join';
-  const homeDraft = { name: store.get('medios.name', ''), duration: 8, custom: '', code: qsRoom || '' };
+  const homeDraft = { name: store.get('medios.name', ''), duration: 8, custom: '', code: qsRoom || '', mode: 'mixed' };
 
   function langSwitch() {
     return `<button class="btn small ${settings.lang === 'he' ? 'primary' : ''}" data-lang="he">עברית</button>
@@ -84,6 +85,7 @@
 
   function renderHome() {
     syncDraft();
+    const still = S.view === 'home';
     S.view = 'home';
     const ekg = `<svg class="ekg" viewBox="0 0 520 46" preserveAspectRatio="none"><path d="M0 26 H150 l10 -4 l8 4 H200 l8 -22 l10 40 l8 -26 l6 8 H330 l10 -6 l10 6 H520"/></svg>`;
     let body;
@@ -101,6 +103,9 @@
           ${durs.map((d) => `<button type="button" role="radio" aria-checked="${homeDraft.duration === d}" class="chip ${homeDraft.duration === d ? 'on' : ''}" data-dur="${d}"><span class="mono">${d}</span> ${t('minutes')}</button>`).join('')}
           <button type="button" role="radio" aria-checked="${homeDraft.duration === 'custom'}" class="chip ${homeDraft.duration === 'custom' ? 'on' : ''}" data-dur="custom">${t('custom')}</button>
         </div></div>
+        ${HT.CAST.length ? `<div class="field"><label>${t('game_mode')}</label><div class="chips" role="radiogroup">
+          ${HT.MODES.map((m) => `<button type="button" role="radio" aria-checked="${homeDraft.mode === m}" class="chip ${homeDraft.mode === m ? 'on' : ''}" data-gmode="${m}">${t('mode_' + m)}</button>`).join('')}
+        </div><div class="dim" style="font-size:.8rem">${t('mode_' + homeDraft.mode + '_d')}</div></div>` : ''}
         <div class="field ${homeDraft.duration === 'custom' ? '' : 'hidden'}" id="custom-wrap"><input class="input" id="c-custom" type="number" min="1" max="120" inputmode="numeric" placeholder="${t('custom_ph')}" value="${esc(homeDraft.custom)}"></div>
         <div class="err" id="h-err">${esc(S.homeErr)}</div>
         <div style="display:flex;gap:.5rem;justify-content:space-between"><button type="button" class="btn ghost" data-mode="">${t('back')}</button><button class="btn primary big" type="submit">${t('create_btn')}</button></div>
@@ -114,7 +119,7 @@
         <div style="display:flex;gap:.5rem;justify-content:space-between"><button type="button" class="btn ghost" data-mode="">${t('back')}</button><button class="btn primary big" type="submit">${t('join_btn')}</button></div>
       </div></form>`;
     }
-    $('#app').innerHTML = `<section class="screen home">
+    $('#app').innerHTML = `<section class="screen home ${still ? 'still' : ''}">
       <div class="home-top">${langSwitch()}</div>
       <div class="logo"><div class="logo-mark">MEDI<span class="cross">✚</span>OS</div><div class="logo-sub">${t('os_sub')}</div>${ekg}</div>
       ${body}
@@ -122,6 +127,7 @@
     const app = $('#app');
     $$('[data-lang]', app).forEach((b) => b.onclick = () => { sfx('click'); setLang(b.dataset.lang); });
     $$('[data-mode]', app).forEach((b) => b.onclick = () => { sfx('open'); S.homeMode = b.dataset.mode || null; S.homeErr = ''; renderHome(); });
+    $$('[data-gmode]', app).forEach((b) => b.onclick = () => { sfx('click'); syncDraft(); homeDraft.mode = b.dataset.gmode; renderHome(); });
     $$('[data-dur]', app).forEach((b) => b.onclick = () => {
       sfx('click'); syncDraft(); homeDraft.duration = b.dataset.dur === 'custom' ? 'custom' : Number(b.dataset.dur); renderHome();
       if (homeDraft.duration === 'custom') $('#c-custom').focus();
@@ -130,7 +136,7 @@
     if (fc) fc.onsubmit = async (e) => {
       e.preventDefault(); syncDraft();
       const duration = homeDraft.duration === 'custom' ? Number(homeDraft.custom) : homeDraft.duration;
-      const r = await Net.request('room:create', { name: homeDraft.name, duration, lang: settings.lang, origin: location.origin });
+      const r = await Net.request('room:create', { name: homeDraft.name, duration, mode: homeDraft.mode, lang: settings.lang, origin: location.origin });
       handleJoinResult(r);
     };
     const fj = $('#f-join');
@@ -176,6 +182,7 @@
             <div class="join-url" id="lb-url"></div>
             <div style="text-align:center;margin-top:.5rem"><button class="btn small" id="lb-copy">${t('copy')}</button></div>
             <div class="meta-row"><span>${t('duration_label')}</span><b id="lb-dur"></b></div>
+            <div class="meta-row" style="border:none;margin-top:0"><span>${t('game_mode')}</span><b id="lb-mode" style="font-family:var(--font-ui);font-size:1rem"></b></div>
           </div>
           <div class="panel">
             <div class="plist-head"><h2>${t('players')}</h2><span class="count" id="lb-count">0</span></div>
@@ -192,6 +199,7 @@
     if (R.qr && $('#lb-qr').dataset.code !== R.code) { $('#lb-qr').innerHTML = R.qr; $('#lb-qr').dataset.code = R.code; }
     $('#lb-url').textContent = R.joinUrl.replace(/^https?:\/\//, '');
     $('#lb-dur').textContent = `${R.durationMin} ${t('minutes')}`;
+    $('#lb-mode').textContent = t('mode_' + (R.mode || 'classic'));
     $('#lb-count').textContent = R.players.length;
     const me = S.me || {};
     $('#lb-plist').innerHTML = R.players.map((p) => `<li class="prow ${p.flagged ? 'flagged' : ''}">
@@ -388,15 +396,55 @@
   }
 
   // ───────────────────────── MDA app ─────────────────────────
-  function renderMda(body) {
-    body.innerHTML = `<div class="mda">
-      <div class="mda-banner"><span class="n101">101</span><p><b>${t('mda_title')}</b><br>${t('mda_hint')}</p></div>
-      ${CT.PROTOCOLS.map((p, i) => `<details class="proto" ${i === 0 ? 'open' : ''}>
+  function protoList(list, openFirst) {
+    return list.map((p, i) => `<details class="proto" ${openFirst && i === 0 ? 'open' : ''}>
         <summary><span class="pi">${p.icon}</span><span class="pt">${esc(tc(p.title))}<br><span class="pa">${esc(tc(p.action))}</span></span></summary>
         <div class="pb"><h4>${t('signs')}</h4><div>${esc(tc(p.signs))}</div>
         <h4>${t('steps')}</h4><ol>${p.steps[settings.lang].map((s) => `<li>${esc(s)}</li>`).join('')}</ol></div>
-      </details>`).join('')}
-    </div>`;
+      </details>`).join('');
+  }
+
+  function renderMda(body) {
+    if (!body) { const w = S.wins.mda; if (!w || !w.el) return; body = w.body; }
+    const tabs = [['file', t('mda_tab_file')], ['heart', t('mda_tab_heart')], ['first', t('mda_tab_first')]];
+    if (!HT.CAST.length) S.mdaTab = 'first';
+    let inner = '';
+    if (S.mdaTab === 'file') {
+      const c = S.call; const ch = charOf(c);
+      const live = c && c.kind === 'heart' && c.status === 'active';
+      const hint = !live ? t('file_no_patient') : c.stage === 'greet' ? t('file_ask_first', { name: tc(ch.name) }) : c.stage === 'fund' ? t('file_type_number', { name: tc(ch.name) }) : t('file_opened');
+      const f = S.mdaFile;
+      inner = `<form class="file-search" id="file-form" autocomplete="off">
+          <label for="file-num">${t('fund_number')}</label>
+          <div class="file-row"><input class="input code" id="file-num" inputmode="numeric" maxlength="9" placeholder="0000000"><button class="btn primary">${t('file_search')}</button></div>
+          <div class="dim" style="font-size:.85rem">${esc(hint)}</div><div class="err" id="file-err"></div>
+        </form>
+        ${f ? `<article class="file-card">
+          <header><span class="fa">${f.avatar}</span><div><b>${esc(tc(f.name))}</b><div class="mono dim">${t('fund_number')}: ${esc(f.fund)}</div></div><span class="badge admin">${t('file_badge')}</span></header>
+          <h4>${t('file_complaint')}</h4><p>${esc(tc(f.text))}</p>
+          <h4>${t('file_question')}</h4><p class="file-q">${esc(tc(f.q))}</p>
+          ${live && c.stage === 'file' ? `<button class="btn info" data-back-call>☎ ${t('back_to_call')}</button>` : ''}
+        </article>` : ''}`;
+    } else if (S.mdaTab === 'heart') {
+      inner = protoList(HT.INFO, true);
+    } else {
+      inner = `<div class="mda-banner"><span class="n101">101</span><p><b>${t('mda_title')}</b><br>${t('mda_hint')}</p></div>${protoList(CT.PROTOCOLS, true)}`;
+    }
+    body.innerHTML = `<div class="mda-wrap">${HT.CAST.length ? `<div class="tabs" role="tablist">${tabs.map(([id, l]) => `<button class="tab ${S.mdaTab === id ? 'on' : ''}" data-mtab="${id}" role="tab">${l}</button>`).join('')}</div>` : ''}<div class="mda">${inner}</div></div>`;
+    $$('[data-mtab]', body).forEach((b) => b.onclick = () => { S.mdaTab = b.dataset.mtab; sfx('click'); renderMda(body); });
+    const form = $('#file-form', body);
+    if (form) {
+      const inp = $('#file-num', body);
+      inp.oninput = () => { inp.value = inp.value.replace(/[^\d-]/g, ''); };
+      if (S.call && S.call.kind === 'heart' && S.call.stage === 'fund') setTimeout(() => inp.focus(), 50);
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const r = await Net.request('mda:lookup', { number: inp.value });
+        if (r.error) { sfx('error'); $('#file-err', body).textContent = errText(r.error); return; }
+        sfx('success'); S.mdaFile = r.file; renderMda(body);
+      };
+    }
+    const back = $('[data-back-call]', body); if (back) back.onclick = () => openWin('calls');
   }
 
   // ───────────────────────── Settings app ─────────────────────────
@@ -451,9 +499,12 @@
   }
 
   // Line count to show for scripted (boost/george/planet) calls
+  const talkOf = (call) => (call && call.talkMs) || CT.ECON.georgeTalkMs;
+  const isTalker = (call) => call && (call.kind === 'george' || call.kind === 'launch');
+  const talkReady = (call) => elapsed(call) >= talkOf(call) - Math.min(1500, talkOf(call) * 0.1);
   function linesShown(call, ch) {
     const lines = ch.lines[settings.lang];
-    if (call.kind === 'george') return Math.min(lines.length, Math.floor(elapsed(call) / (CT.ECON.georgeTalkMs / lines.length)) + 1);
+    if (isTalker(call)) return Math.min(lines.length, Math.floor(elapsed(call) / (talkOf(call) / lines.length)) + 1);
     return Math.min(lines.length, Math.floor(elapsed(call) / 1500) + 1);
   }
 
@@ -461,7 +512,8 @@
     const c = S.call; if (!c) return 'idle';
     const ch = charOf(c);
     let k = `${c.id}|${c.status}|${settings.lang}`;
-    if (c.status === 'active' && c.kind !== 'regular') k += '|' + linesShown(c, ch) + '|' + (c.kind === 'george' && elapsed(c) >= CT.ECON.georgeTalkMs - Math.min(1500, CT.ECON.georgeTalkMs * 0.1));
+    if (c.kind === 'heart') k += `|${c.stage}|${c.tries}|${(c.chat || []).length}|${c.result ? 1 : 0}`;
+    else if (c.status === 'active' && c.kind !== 'regular') k += '|' + linesShown(c, ch) + '|' + (isTalker(c) && talkReady(c));
     return k;
   }
 
@@ -479,27 +531,29 @@
         <div class="stats-line"><div><b>${st.answered}</b>${t('answered')}</div><div><b>${st.answered ? Math.round((st.correct / st.answered) * 100) : 0}%</b>${t('stats')}</div><div><b>${myRank()}</b>${t('rank')}</div></div>`;
       return;
     }
-    const isG = c.kind === 'george';
-    const isP = c.kind === 'planet';
-    stage.className = 'call-stage' + (isG ? ' george-stage' : '') + (isP ? ' planet-stage' : '');
+    const isNoob = c.kind === 'launch' && ch.world === 'minecraft';
+    const isG = c.kind === 'george' || (c.kind === 'launch' && !isNoob);
+    const isP = c.kind === 'planet' || c.world === 'planet';
+    const isMC = isNoob || c.world === 'minecraft';
+    stage.className = 'call-stage' + (isG ? ' george-stage' : '') + (isP ? ' planet-stage' : '') + (isMC ? ' mc-stage' : '');
     const avatar = (ring) => {
       if (isG && ring) return `<div class="avatar ring" style="--rc:#6a7bff;background:#05060d"><div class="silhouette" style="width:70px;height:82px">${GEORGE_SVG}</div></div>`;
       if (isG) return `<div class="silhouette">${GEORGE_SVG}</div>`;
-      const crown = ch.id === 'legendary_george';
-      return `<div class="avatar ${ring ? 'ring' : ''} ${crown ? 'crowned' : ''}" style="--rc:${rc(ch)}">${crown ? '<span class="legend-rays"></span><span class="crown">👑</span>' : ''}${ch.id === 'strawberry_elephant' ? '🐘<span style="position:absolute;bottom:4px;inset-inline-end:2px;font-size:1.6rem">🍓</span>' : ch.avatar}</div>`;
+      const crown = ch.id === 'legendary_george' || ch.id === 'h_legend';
+      return `<div class="avatar ${ring ? 'ring' : ''} ${crown ? 'crowned' : ''}" style="--rc:${rc(ch)}">${crown ? '<span class="legend-rays"></span><span class="crown">👑</span>' : ''}${ch.id === 'strawberry_elephant' || ch.id === 'h_elephant' ? '🐘<span style="position:absolute;bottom:4px;inset-inline-end:2px;font-size:1.6rem">🍓</span>' : ch.avatar}</div>`;
     };
     const head = (ring) => `<div class="caller" style="--rc:${isG ? '#8a96ff' : rc(ch)}">
-      ${isP ? `<div class="planet-tag">🪐 ${t('planet')}</div>` : ''}
+      ${isP ? `<div class="planet-tag">🪐 ${t('planet')}</div>` : ''}${c.world === 'minecraft' ? `<div class="planet-tag mc-tag">▦ ${t('mc_world')}</div>` : ''}
       ${avatar(ring)}
-      <div class="cname">${isG && c.status === 'ringing' ? t('unknown_caller') : esc(tc(ch.name))}</div>
-      ${isG ? `<span class="rarity" style="--rc:#8a96ff">???</span>` : rarityTag(ch)}
-      ${!isG && c.status !== 'ringing' ? `<div class="bio">${esc(tc(ch.bio))}</div>` : ''}
+      <div class="cname">${(isG || isNoob) && c.status === 'ringing' ? t('unknown_caller') : esc(tc(ch.name))}</div>
+      ${isG || isNoob ? `<span class="rarity" style="--rc:#8a96ff">???</span>` : rarityTag(ch)}
+      ${!isG && c.status !== 'ringing' && c.kind !== 'heart' ? `<div class="bio">${esc(tc(ch.bio))}</div>` : ''}
     </div>`;
 
-    const stars = isP ? '<div class="stars"></div>' : '';
+    const stars = isP ? '<div class="stars"></div>' : isMC ? '<div class="mc-blocks"></div>' : '';
 
     if (c.status === 'ringing') {
-      stage.innerHTML = `${head(true)}<div class="stage-title">${t('ringing')}</div><button class="btn primary big" id="c-answer">${t('answer')}</button>`;
+      stage.innerHTML = `${stars}${head(true)}<div class="stage-title">${t('ringing')}</div><button class="btn primary big" id="c-answer">${t('answer')}</button>`;
       $('#c-answer').onclick = async (e) => { e.target.disabled = true; Audio8.ring(false); sfx('click'); const r = await Net.request('call:pickup', { callId: c.id }); if (r.error) { e.target.disabled = false; toastErr(r.error); } };
       return;
     }
@@ -530,12 +584,14 @@
       return;
     }
 
+    if (c.kind === 'heart') return renderHeart(stage, c, ch, head, stars);
+
     // scripted calls: boost / george / planet
     const lines = ch.lines[settings.lang];
     if (c.status === 'done') {
       const res = c.result;
-      if (c.kind === 'george') {
-        stage.innerHTML = `${head(false)}<div class="stage-title" style="color:#aab3ff">${t('stay_earth')}</div><div class="dim">${t('next_call_soon')}</div>`;
+      if (isTalker(c)) {
+        stage.innerHTML = `${stars}${head(false)}<div class="stage-title" style="color:#aab3ff">${isNoob ? t('stay_noob') : t('stay_earth')}</div><div class="dim">${t('next_call_soon')}</div>`;
       } else {
         stage.innerHTML = `${stars}${head(false)}<div class="delta plus">+${money(res.delta)}</div>
           <div class="stage-title">${isP ? t('back_earth') : t('next_call_soon')}</div>`;
@@ -545,12 +601,12 @@
     const shown = linesShown(c, ch);
     const allShown = shown >= lines.length;
     let foot = '';
-    if (c.kind === 'george') {
-      const left = Math.max(0, Math.ceil((CT.ECON.georgeTalkMs - elapsed(c)) / 1000));
-      const ready = elapsed(c) >= CT.ECON.georgeTalkMs - Math.min(1500, CT.ECON.georgeTalkMs * 0.1);
+    if (isTalker(c)) {
+      const left = Math.max(0, Math.ceil((talkOf(c) - elapsed(c)) / 1000));
+      const ready = talkReady(c);
       foot = ready
-        ? `<div class="g-question">${t('george_q')}</div><div class="yesno"><button class="btn yes" id="g-yes">${t('yes')}</button><button class="btn no" id="g-no">${t('no')}</button></div>`
-        : `<div class="g-progress"><i id="g-bar" style="width:${Math.min(100, (elapsed(c) / CT.ECON.georgeTalkMs) * 100)}%"></i></div><div class="g-count" id="g-count">${t('listen')} ${left}s</div>`;
+        ? `<div class="g-question">${c.kind === 'launch' ? esc(tc(ch.question)) : t('george_q')}</div><div class="yesno"><button class="btn yes" id="g-yes">${t('yes')}</button><button class="btn no" id="g-no">${t('no')}</button></div>`
+        : `<div class="g-progress"><i id="g-bar" style="width:${Math.min(100, (elapsed(c) / talkOf(c)) * 100)}%"></i></div><div class="g-count" id="g-count">${t('listen')} ${left}s</div>`;
     } else if (allShown) {
       foot = `<button class="btn primary big" id="c-collect">🎁 ${t('collect')} +${money(ch.boost)}</button>`;
     }
@@ -566,7 +622,7 @@
       y.disabled = n.disabled = true; S.launching = true;
       const r = await Net.request('call:george', { callId: c.id, yes: true });
       if (r.error) { S.launching = false; y.disabled = n.disabled = false; return toastErr(r.error); }
-      await playLaunch();
+      await playLaunch(r.world || 'planet');
     };
     if (n) n.onclick = async () => {
       y.disabled = n.disabled = true; sfx('close');
@@ -574,6 +630,62 @@
       if (r.error) { y.disabled = n.disabled = false; toastErr(r.error); }
     };
   }
+
+  function renderHeart(stage, c, ch, head, stars) {
+    const done = c.status === 'done';
+    const res = c.result;
+    const tag = (n, boost) => `<div class="reward-chip">[${t('reward_tag')}: ${n.toLocaleString('en-US')} ${t('coins')}${boost ? ' / ' + t('bonus') : ''}]</div>`;
+    let html = `${stars}${head(false)}<div class="bubble" id="c-bubble"></div>`;
+    if (done) {
+      if (res.correct) {
+        html += `<div class="result good">${t('heart_saved')}</div><div class="delta plus">+${money(res.delta)}</div>
+          <div class="line ok-line">${esc(res.aiReply || tc(byIdOk(c)) || '')}</div>${tag(res.delta, res.booster)}`;
+      } else {
+        html += `<div class="result bad">${res.hungUp ? t('heart_hung') : t('heart_failed')}</div><div class="dim">${t('heart_no_reward')}</div>`;
+      }
+      html += `<div class="stage-title" style="font-size:1.2rem">${res.world === 'planet' ? t('back_earth') : res.world === 'minecraft' ? t('back_earth_mc') : t('next_call_soon')}</div>`;
+      stage.innerHTML = html;
+      $('#c-bubble').textContent = tc(ch.hello);
+      return;
+    }
+    if (c.stage === 'greet') {
+      html += `<button class="btn primary big" id="h-fund">📋 ${t('ask_fund')}</button>`;
+    } else if (c.stage === 'fund') {
+      html += `<div class="line fund-line">${esc(t('fund_says'))} <b class="mono fund-no">${esc(c.fund)}</b></div>
+        <div class="step-hint">① ${t('step_open_mda')}<br>② ${t('step_type_number')}</div>
+        <button class="btn info big" id="h-mda">✚ ${t('open_mda_file')}</button>`;
+    } else {
+      html += `<div class="file-mini"><b>📁 ${t('file_complaint')}:</b> ${esc(tc(c.file))}</div>
+        <div class="file-q">${esc(tc(c.q))}</div>
+        ${c.reply ? `<div class="line patient-reply">💬 ${esc(tc(c.reply))}</div>` : ''}
+        <div class="options">${c.choices.map((o) => `<button class="opt ${c.removed.includes(o.i) ? 'bad' : ''}" data-o="${o.i}" ${c.removed.includes(o.i) ? 'disabled' : ''}><span>${esc(tc(o.t))}</span></button>`).join('')}</div>
+        <div class="dim" style="font-size:.8rem;margin-top:6px">${t('tries_left', { n: Math.max(0, c.maxTries - c.tries) })} · ${t('reward')}: ${money(ch.reward)}</div>
+        ${c.aiOn ? `<div class="ai-chat">${(c.chat || []).map((m) => `<div class="line ${m.who === 'player' ? 'me-line' : 'patient-reply'}">${m.who === 'player' ? '🧑‍⚕️' : '💬'} ${esc(m.text)}</div>`).join('')}
+          <form class="composer" id="h-free" style="border:none;padding:6px 0 0"><input class="input" id="h-text" maxlength="400" placeholder="${t('free_ph')}" autocomplete="off"><button class="btn primary">${t('send')}</button></form></div>` : ''}`;
+    }
+    html += `<button class="btn small danger" id="h-hang" style="margin-top:10px">☎ ${t('hang_up')}</button>`;
+    stage.innerHTML = html;
+    typeInto($('#c-bubble'), tc(ch.hello), c.id + ':hello');
+    const fund = $('#h-fund'); if (fund) fund.onclick = async () => { fund.disabled = true; sfx('click'); const r = await Net.request('call:fund', { callId: c.id }); if (r.error) { fund.disabled = false; toastErr(r.error); } };
+    const mda = $('#h-mda'); if (mda) mda.onclick = () => { S.mdaTab = 'file'; S.mdaFile = null; openWin('mda'); renderMda(); };
+    $$('[data-o]', stage).forEach((b) => b.onclick = async () => {
+      $$('[data-o]', stage).forEach((x) => (x.disabled = true));
+      const r = await Net.request('call:choose', { callId: c.id, option: Number(b.dataset.o) });
+      if (r.error) { toastErr(r.error); renderStage(null, true); }
+      else if (!r.correct) sfx('fail');
+    });
+    const free = $('#h-free');
+    if (free) free.onsubmit = async (e) => {
+      e.preventDefault();
+      const inp = $('#h-text'); const text = inp.value.trim(); if (!text) return;
+      inp.disabled = true;
+      const r = await Net.request('call:reply', { callId: c.id, text });
+      if (r.error) { inp.disabled = false; toastErr(r.error); }
+    };
+    const hang = $('#h-hang'); if (hang) hang.onclick = async () => { hang.disabled = true; await Net.request('call:hangup', { callId: c.id }); };
+    stage.scrollTop = c.stage === 'file' ? stage.scrollTop : 0;
+  }
+  function byIdOk(c) { return c.result && c.result.ok; }
 
   function typeInto(el, text, id) {
     if (!el) return;
@@ -594,15 +706,18 @@
   function renderIndex() {
     const card = (ch, odds) => {
       const known = S.discovered.has(ch.id);
-      return `<div class="icard ${known ? '' : 'locked'}" style="--rc:${ch.id === 'george' ? '#8a96ff' : rc(ch)}">
+      return `<div class="icard ${known ? '' : 'locked'}" style="--rc:${ch.rarity === 'mystery' ? '#8a96ff' : rc(ch)}">
         <span class="ia">${ch.avatar}</span><span class="in">${esc(tc(ch.name))}</span>
         <span class="ib">${known ? esc(tc(ch.bio)) : t('locked')}</span>
-        <span class="ic">${t('chance')} ${odds}% · ${ch.reward ? money(ch.reward) : ch.boost ? '+' + money(ch.boost) : '🪐'}</span></div>`;
+        <span class="ic">${t('chance')} ${odds}% · ${ch.reward ? money(ch.reward) : ch.boost ? '+' + money(ch.boost) : ch.world === 'minecraft' ? '▦' : '🪐'}</span></div>`;
     };
     return `<div class="index" style="width:100%">
       <h3>${t('regular_callers')}</h3><div class="igrid">${CT.REGULARS.map((c) => card(c, c.weight)).join('')}</div>
       <h3>${t('special_callers')}</h3><div class="igrid">${CT.SPECIALS.map((c) => card(c, c.weight)).join('')}</div>
-      <h3>${t('planet_callers')}</h3><div class="igrid">${CT.PLANET.map((c) => card(c, c.weight)).join('')}</div></div>`;
+      <h3>${t('planet_callers')}</h3><div class="igrid">${CT.PLANET.map((c) => card(c, c.weight)).join('')}</div>
+      ${HT.CAST.length ? `<h3>${t('heart_callers')}</h3><div class="igrid">${HT.CAST.map((c) => card(c, c.weight)).join('')}</div>
+      <h3>${t('mc_callers')}</h3><div class="igrid">${HT.MINECRAFT.map((c) => card(c, c.weight)).join('')}</div>
+      <h3>${t('planet_callers')} · ${t('research')}</h3><div class="igrid">${HT.PLANET.map((c) => card(c, c.weight)).join('')}</div>` : ''}</div>`;
   }
 
   function onCall(call) {
@@ -610,10 +725,10 @@
     S.call = call;
     if (call && (!prev || prev.id !== call.id) && call.status === 'ringing') {
       Audio8.ring(true);
-      if (call.kind === 'george') sfx('mystery');
+      if (isTalker(call)) sfx('mystery');
       if (!isOpen('calls') || S.focused !== 'calls') {
         const ch = charOf(call);
-        toast(`<span class="ta">${call.kind === 'george' ? '👤' : ch.avatar}</span><span class="tt"><b>${t('incoming')}</b><br>${call.kind === 'george' ? t('unknown_caller') : esc(tc(ch.name))}</span><span class="btn small info">${t('open')}</span>`,
+        toast(`<span class="ta">${isTalker(call) ? '👤' : ch.avatar}</span><span class="tt"><b>${t('incoming')}</b><br>${isTalker(call) ? t('unknown_caller') : esc(tc(ch.name))}</span><span class="btn small info">${t('open')}</span>`,
           { cls: 'call', ms: 6000, onClick: () => openWin('calls') });
       }
     }
@@ -624,7 +739,10 @@
       if (r.kind === 'regular') sfx(r.correct ? 'success' : 'fail');
       else if (r.kind === 'planet') sfx('jackpot');
       else if (r.kind === 'boost') sfx('coin');
+      else if (r.kind === 'heart') sfx(r.correct ? (r.booster || r.world ? 'jackpot' : 'success') : 'fail');
     }
+    if (call && (!prev || prev.id !== call.id)) S.mdaFile = null;
+    if (isOpen('mda') && S.mdaTab === 'file' && (!prev || !call || prev.stage !== call.stage || prev.id !== call.id || prev.status !== call.status)) renderMda();
     if (call && call.kind === 'planet' && call.status === 'active' && !S.launching && !(prev && prev.kind === 'planet')) {
       // resumed mid-planet (e.g. refresh) — no animation needed
     }
@@ -632,13 +750,16 @@
     updateIcons();
   }
 
-  async function playLaunch() {
+  async function playLaunch(world) {
     sfx('launch');
     const ov = document.createElement('div');
-    ov.className = 'ov launch';
-    ov.innerHTML = `<div class="starfield"></div><div class="launch-title">🚀 ${t('launch_t')}</div><div class="countdown" id="cd">3</div><div class="flame"></div><div class="rocket">🚀</div><div class="whiteflash"></div>`;
+    const mc = world === 'minecraft';
+    ov.className = 'ov launch' + (mc ? ' launch-mc' : '');
+    ov.innerHTML = mc
+      ? `<div class="mc-fall">${Array.from({ length: 36 }, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i % 9) * 0.15}s;--c:${['#5d9b3a', '#7a5230', '#8c8c8c', '#4f8b2e', '#6b4423'][i % 5]}"></i>`).join('')}</div><div class="launch-title">▦ ${t('launch_mc')}</div><div class="countdown" id="cd">3</div><div class="whiteflash"></div>`
+      : `<div class="starfield"></div><div class="launch-title">🚀 ${t('launch_t')}</div><div class="countdown" id="cd">3</div><div class="flame"></div><div class="rocket">🚀</div><div class="whiteflash"></div>`;
     $('#overlay').appendChild(ov);
-    for (const n of ['3', '2', '1', '🪐']) { const cd = $('#cd', ov); if (cd) cd.textContent = n; await sleep(900); }
+    for (const n of ['3', '2', '1', mc ? '▦' : '🪐']) { const cd = $('#cd', ov); if (cd) cd.textContent = n; await sleep(900); }
     ov.remove();
     S.launching = false;
     openWin('calls'); S.callsTab = 'call'; renderCalls();
@@ -948,11 +1069,11 @@
     if (S.view !== 'desktop') return;
     tickTimer();
     const c = S.call;
-    if (c && c.status === 'active' && c.kind !== 'regular') {
+    if (c && c.status === 'active' && c.kind !== 'regular' && c.kind !== 'heart') {
       renderStage();
       const bar = $('#g-bar'); const cnt = $('#g-count');
-      if (bar) bar.style.width = Math.min(100, (elapsed(c) / CT.ECON.georgeTalkMs) * 100) + '%';
-      if (cnt) cnt.textContent = `${t('listen')} ${Math.max(0, Math.ceil((CT.ECON.georgeTalkMs - elapsed(c)) / 1000))}s`;
+      if (bar) bar.style.width = Math.min(100, (elapsed(c) / talkOf(c)) * 100) + '%';
+      if (cnt) cnt.textContent = `${t('listen')} ${Math.max(0, Math.ceil((talkOf(c) - elapsed(c)) / 1000))}s`;
     }
     const clk = $('#tb-clock'); if (clk) clk.textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     if (S.me?.mutedUntil && S.me.mutedUntil < Net.serverNow() && S.chan === 'global' && $('.muted-note')) renderChatMain();

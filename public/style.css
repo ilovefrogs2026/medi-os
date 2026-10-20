@@ -507,3 +507,47 @@ button.home-card:hover { border-color: var(--green); transform: translateY(-2px)
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* ───────── Heart & vessels edition ───────── */
+.mda-wrap { display: flex; flex-direction: column; min-height: 100%; }
+.mda-wrap > .tabs { position: sticky; top: 0; background: var(--panel-solid); z-index: 2; }
+.file-search { border: 1px solid var(--line-strong); border-radius: 10px; padding: 12px; background: rgba(0,0,0,.3); display: grid; gap: 6px; margin-bottom: 12px; }
+.file-search label { font-size: .8rem; color: var(--fg-dim); letter-spacing: .06em; }
+.file-row { display: flex; gap: 8px; }
+.file-row .input.code { font-size: 1.7rem; letter-spacing: .2em; padding: .35em .6em; }
+.file-card { border: 1px solid rgba(51,230,255,.5); border-radius: 12px; background: rgba(51,230,255,.06); padding: 12px 14px; display: grid; gap: 4px; animation: slideIn .3s ease-out; }
+.file-card header { display: flex; align-items: center; gap: .7rem; margin-bottom: 4px; }
+.file-card header > div { flex: 1; min-width: 0; }
+.file-card .fa { font-size: 2.2rem; }
+.file-card h4 { margin: .4rem 0 0; font-size: .7rem; letter-spacing: .12em; color: var(--cyan); text-transform: uppercase; }
+.file-card p { margin: 0; }
+.file-card .btn { justify-self: start; margin-top: 8px; }
+.file-q { font-weight: 700; font-size: 1.05rem; color: #fff; margin: 4px 0 8px; max-width: 560px; }
+.file-mini { width: 100%; max-width: 560px; text-align: start; font-size: .9rem; padding: 8px 12px; border-radius: 10px; border: 1px dashed rgba(51,230,255,.5); background: rgba(51,230,255,.05); margin-bottom: 6px; }
+.fund-line { max-width: 520px; width: 100%; text-align: start; }
+.fund-no { font-size: 1.8rem; color: var(--amber); letter-spacing: .12em; text-shadow: 0 0 10px rgba(255,176,0,.5); direction: ltr; display: inline-block; }
+.step-hint { margin: 10px 0; padding: 8px 12px; border-radius: 10px; background: rgba(57,255,136,.07); border: 1px solid var(--line); text-align: start; font-size: .92rem; line-height: 1.7; }
+.patient-reply { max-width: 560px; width: 100%; text-align: start; border-color: rgba(255,176,0,.5); color: #ffe2a8; }
+.me-line { max-width: 560px; width: 100%; text-align: start; border-color: var(--line-strong); }
+.ok-line { max-width: 560px; text-align: start; border-color: var(--green); }
+.ai-chat { width: 100%; max-width: 560px; display: grid; gap: 6px; margin-top: 10px; }
+.reward-chip { font-family: var(--font); font-size: 1.35rem; color: var(--amber); margin-top: 8px; direction: inherit; }
+.opt[disabled].bad { opacity: .55; text-decoration: line-through; }
+
+/* Minecraft world: generic voxel look (own pixel blocks, no game assets) */
+.mc-stage { background: linear-gradient(#6fb7ff 0%, #9ed3ff 45%, #3f7f2a 45%, #4f8b2e 52%, #6b4423 52%, #5a391d 100%); }
+.mc-stage .line, .mc-stage .bubble, .mc-stage .file-mini, .mc-stage .step-hint { background: rgba(20,14,6,.78); border-color: #8c6a3c; }
+.mc-blocks { position: absolute; inset: 0; pointer-events: none; image-rendering: pixelated;
+  background-image: linear-gradient(90deg, rgba(0,0,0,.12) 1px, transparent 1px), linear-gradient(rgba(0,0,0,.12) 1px, transparent 1px);
+  background-size: 32px 32px; background-position: 0 45%; opacity: .6; }
+.mc-stage .avatar { border-radius: 6px; border-width: 4px; }
+.mc-tag { color: #d9ffb3; text-shadow: 0 0 6px #2a5a10; }
+.launch-mc { background: linear-gradient(#6fb7ff, #3f7f2a); }
+.mc-fall { position: absolute; inset: 0; overflow: hidden; }
+.mc-fall i { position: absolute; top: -60px; left: var(--x); width: 44px; height: 44px; background: var(--c); box-shadow: inset -6px -6px 0 rgba(0,0,0,.25), inset 6px 6px 0 rgba(255,255,255,.15); animation: blockFall 1.4s var(--d) ease-in infinite; }
+@keyframes blockFall { to { transform: translateY(115vh) rotate(90deg); } }
+.launch-mc .countdown { color: #fff; text-shadow: 4px 4px 0 #2a5a10; }
+
+.screen.still { animation: none; }
+.mc-stage .cname { color: #fff; text-shadow: 2px 2px 0 #1d3a0c, 0 0 8px rgba(0,0,0,.6); }
+.mc-stage .bio { color: #10230a; }

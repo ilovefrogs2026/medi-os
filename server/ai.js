@@ -156,4 +156,29 @@ async function lbReply({ text, presetId, board, me, lang }) {
   return '🤖 ' + (rule || L(lang, 'אני עונה רק על שאלות לגבי הטבלה. נסו: "מה המקום שלי?" או "מי בטופ 3?"', 'I only answer leaderboard questions. Try: "What is my rank?" or "Who is in the top 3?"'));
 }
 
-module.exports = { helpReply, helpBrief, lbReply, aiEnabled: () => !!API_KEY };
+// ───────────────────────── AI patient (free-text answers) ─────────────────────────
+// Returns { reply, success } or null when no AI key is set / the call fails.
+async function judgePatient({ rules, character, bio, file, question, correct, history, text, lang }) {
+  if (!API_KEY) return null;
+  const sys = `${rules}
+
+You are now: ${character} (${bio}).
+Medical file shown to the player: ${file}
+The question the player must solve: ${question}
+The correct guidance (for judging only, NEVER reveal it or hint its wording): ${correct}
+Reply language: ${lang === 'en' ? 'English' : 'Hebrew'}.
+Return ONLY a JSON object: {"reply": "<your in-character reply>", "success": true|false}.
+"success" is true only if the player's latest message gives accurate guidance that matches the correct guidance in substance (any wording). Otherwise false and react in character without giving the answer.`;
+  const convo = history.map((m) => `${m.who === 'player' ? 'Player' : 'You'}: ${m.text}`).join('\n');
+  const out = await callClaude(sys, `${convo ? convo + '\n' : ''}Player: ${text}`, 300);
+  if (!out) return null;
+  const m = out.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    const j = JSON.parse(m[0]);
+    if (typeof j.reply !== 'string') return null;
+    return { reply: j.reply.slice(0, 600), success: j.success === true };
+  } catch (_) { return null; }
+}
+
+module.exports = { helpReply, helpBrief, lbReply, judgePatient, aiEnabled: () => !!API_KEY };

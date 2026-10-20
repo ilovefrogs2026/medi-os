@@ -41,7 +41,7 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓',
   await Promise.all([host.open, a.open, b.open]);
 
   console.log('Lobby');
-  const cr = await host.req('room:create', { name: 'HostDana', duration: 5, lang: 'he', origin: 'http://localhost:3917' });
+  const cr = await host.req('room:create', { name: 'HostDana', duration: 5, lang: 'he', mode: 'classic', origin: 'http://localhost:3917' });
   ok(/^\d{6}$/.test(cr.code), 'room created with 6-digit code');
   await sleep(100);
   ok(host.state.qr && host.state.qr.startsWith('<svg'), 'QR code SVG generated');

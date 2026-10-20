@@ -15,6 +15,7 @@ const { attachWebSocketServer } = require('./server/ws');
 const { qrSvg } = require('./server/qr');
 const AI = require('./server/ai');
 const C = require('./shared/content');
+const H = require('./shared/heart');
 
 const PORT = Number(process.env.PORT) || 3000;
 if (process.env.GEORGE_TALK_MS) C.ECON.georgeTalkMs = Number(process.env.GEORGE_TALK_MS); // test hook
@@ -60,7 +61,11 @@ function lanAddress() { const l = lanAddresses(); return l.length ? l[0].address
 /** @type {Map<string, any>} */
 const rooms = new Map();
 const CALLER_POOL = [...C.REGULARS.map((r) => ({ ...r, kind: 'regular' })), ...C.SPECIALS];
-const byId = Object.fromEntries([...C.REGULARS, ...C.SPECIALS, ...C.PLANET].map((c) => [c.id, c]));
+const HEART_POOL = H.CAST;
+const byId = Object.fromEntries([...C.REGULARS, ...C.SPECIALS, ...C.PLANET, ...H.CAST, ...H.MINECRAFT, ...H.PLANET].map((c) => [c.id, c]));
+const talkMs = (ch) => (process.env.GEORGE_TALK_MS ? C.ECON.georgeTalkMs : (ch && ch.talkMs) || C.ECON.georgeTalkMs);
+const MAX_TRIES_CHOICE = 2; // wrong picks allowed before the patient gives up
+const MAX_TRIES_TEXT = 5;   // free-text attempts (AI mode)
 
 function newRoomCode() {
   for (let i = 0; i < 1000; i++) {
@@ -108,7 +113,7 @@ function board(room) {
 
 function roomState(room) {
   return {
-    code: room.code, phase: room.phase, durationMin: room.durationMin, endsAt: room.endsAt, now: now(),
+    code: room.code, mode: room.mode, phase: room.phase, durationMin: room.durationMin, endsAt: room.endsAt, now: now(),
     hostId: room.hostId, joinUrl: room.joinUrl, qr: room.phase === 'lobby' ? room.qr : null,
     players: board(room), aiEnabled: AI.aiEnabled()
   };
@@ -138,7 +143,39 @@ function userMsg(p, text) { return { id: rid(5), ts: now(), from: { id: p.id, na
 function publicCall(call) {
   if (!call) return null;
   const { id, kind, charId, scenario, options, status, pickedAt, result, createdAt } = call;
-  return { id, kind, charId, scenario, options, status, pickedAt, result, createdAt };
+  const out = { id, kind, charId, scenario, options, status, pickedAt, result, createdAt };
+  if (kind === 'george' || kind === 'launch') out.talkMs = talkMs(byId[charId]);
+  if (kind === 'heart') {
+    const sc = byId[charId].scenarios[call.sIdx];
+    Object.assign(out, {
+      stage: call.stage, world: call.world || null, tries: call.tries, removed: call.removed, reply: call.reply,
+      chat: call.chat, aiOn: AI.aiEnabled(), maxTries: MAX_TRIES_CHOICE,
+      fund: call.stage === 'greet' ? null : call.fund,
+      file: call.stage === 'file' || status === 'done' ? sc.file : null,
+      q: call.stage === 'file' || status === 'done' ? sc.q : null,
+      choices: call.stage === 'file' || status === 'done' ? call.order.map((i) => ({ i, t: sc.o[i] })) : null
+    });
+  }
+  return out;
+}
+
+function fundNumber() { return String(Math.floor(1000000 + Math.random() * 9000000)); }
+
+// Build a heart-edition call (patient asks, player looks up the file, then answers)
+function heartCall(call, ch, h) {
+  let idxs = ch.scenarios.map((_, i) => i);
+  if (h) {
+    const used = h.used[ch.id] || (h.used[ch.id] = []);
+    if (used.length >= idxs.length) used.length = 0;
+    idxs = idxs.filter((i) => !used.includes(i));
+  }
+  call.sIdx = idxs[Math.floor(Math.random() * idxs.length)];
+  if (h) h.used[ch.id].push(call.sIdx);
+  call.stage = 'greet';
+  call.fund = fundNumber();
+  call.order = shuffle(ch.scenarios[call.sIdx].o.map((_, i) => i));
+  call.tries = 0; call.removed = []; call.reply = null; call.chat = [];
+  return call;
 }
 
 function scheduleCall(room, p, delayMs) {
@@ -146,7 +183,7 @@ function scheduleCall(room, p, delayMs) {
   if (room.phase !== 'playing') return;
   p.callTimer = setTimeout(() => {
     if (room.phase !== 'playing' || !room.players.has(p.id) || p.call) return;
-    p.call = rollCall(p);
+    p.call = rollCall(p, room);
     emitPlayer(p, 'call', publicCall(p.call));
   }, delayMs);
 }
@@ -154,10 +191,16 @@ function scheduleCall(room, p, delayMs) {
 // No repeats: skip the last few callers this player heard, and use every
 // scenario of a caller before any of them comes back.
 const RECENT_CALLERS = 5;
-function rollCall(p) {
+function deckFor(mode) {
+  if (mode === 'classic') return CALLER_POOL;
+  if (mode === 'heart') return HEART_POOL;
+  return Math.random() < 0.5 ? HEART_POOL : CALLER_POOL; // mixed: half and half
+}
+function rollCall(p, room) {
   const h = p.hist || (p.hist = { recent: [], used: {} });
-  let pool = CALLER_POOL.filter((c) => !h.recent.includes(c.id));
-  if (!pool.length) pool = CALLER_POOL;
+  const deck = deckFor(room ? room.mode : 'mixed');
+  let pool = deck.filter((c) => !h.recent.includes(c.id));
+  if (!pool.length) pool = deck;
   const ch = pickWeighted(pool);
   h.recent.push(ch.id);
   if (h.recent.length > RECENT_CALLERS) h.recent.shift();
@@ -166,6 +209,7 @@ function rollCall(p) {
 
 function rollCallFor(ch, h) {
   const call = { id: rid(5), charId: ch.id, kind: ch.kind, status: 'ringing', createdAt: now(), pickedAt: 0, result: null };
+  if (ch.kind === 'heart') return heartCall(call, ch, h);
   if (ch.kind === 'regular') {
     let idxs = ch.scenarios.map((_, i) => i);
     if (h) {
@@ -191,7 +235,7 @@ function finishCall(room, p, result) {
   const done = p.call;
   setTimeout(() => {
     if (p.call === done) { p.call = null; scheduleCall(room, p, rand(1800, 3800)); }
-  }, result.kind === 'planet' ? 600 : 2600);
+  }, result.kind === 'planet' ? 600 : result.kind === 'heart' ? 5000 : 2600);
   syncMe(p);
   broadcastState(room);
 }
@@ -284,8 +328,9 @@ const handlers = {
       }
     } catch (_) { /* keep */ }
     const joinUrl = `${origin}/?room=${code}`;
+    const mode = H.MODES.includes(d.mode) ? d.mode : 'mixed';
     const room = {
-      code, phase: 'lobby', durationMin: duration, endsAt: null, createdAt: now(), hostId: null,
+      code, mode, phase: 'lobby', durationMin: duration, endsAt: null, createdAt: now(), hostId: null,
       joinUrl, qr: qrSvg(joinUrl), players: new Map(), banned: new Set(), reportedNames: new Set(),
       global: [], tickets: new Map(), lb: new Map(), stateTimer: null, endTimer: null
     };
@@ -423,17 +468,94 @@ const handlers = {
 
   'call:george'(conn, d, room, me) {
     const c = me.call;
-    if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'george' || c.status !== 'active') return { error: 'no_call' };
-    if (now() - c.pickedAt < C.ECON.georgeTalkMs - Math.min(1500, C.ECON.georgeTalkMs * 0.1)) return { error: 'too_early' };
+    if (room.phase !== 'playing' || !c || c.id !== d.callId || !['george', 'launch'].includes(c.kind) || c.status !== 'active') return { error: 'no_call' };
+    const T = talkMs(byId[c.charId]);
+    if (now() - c.pickedAt < T - Math.min(1500, T * 0.1)) return { error: 'too_early' };
     if (!d.yes) {
-      finishCall(room, me, { kind: 'george', yes: false, delta: 0 });
+      finishCall(room, me, { kind: 'george', yes: false, delta: 0, world: byId[c.charId].world || 'planet' });
       return { ok: true };
+    }
+    if (c.kind === 'launch') {
+      const ch = byId[c.charId];
+      const list = ch.world === 'minecraft' ? H.MINECRAFT : H.PLANET;
+      const dest = pickWeighted(list);
+      const nc = heartCall({ id: rid(5), charId: dest.id, kind: 'heart', status: 'active', createdAt: now(), pickedAt: now(), result: null }, dest, me.hist);
+      nc.world = ch.world;
+      me.call = nc;
+      emitPlayer(me, 'call', publicCall(nc));
+      return { ok: true, launch: true, world: ch.world };
     }
     // Launch to Planet George — one unique call
     const pc = pickWeighted(C.PLANET);
     me.call = { id: rid(5), kind: 'planet', charId: pc.id, status: 'active', createdAt: now(), pickedAt: now(), result: null };
     emitPlayer(me, 'call', publicCall(me.call));
     return { ok: true, launch: true };
+  },
+
+  // ─── heart edition: fund number → medical file → answer ───
+  'call:fund'(conn, d, room, me) {
+    const c = me.call;
+    if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active') return { error: 'no_call' };
+    if (c.stage === 'greet') c.stage = 'fund';
+    emitPlayer(me, 'call', publicCall(c));
+    return { ok: true };
+  },
+
+  'mda:lookup'(conn, d, room, me) {
+    const num = String(d.number || '').replace(/\D/g, '');
+    const c = me.call;
+    if (!num) return { error: 'no_file' };
+    if (room.phase !== 'playing' || !c || c.kind !== 'heart' || c.status !== 'active' || c.stage === 'greet' || num !== c.fund) return { error: 'no_file' };
+    c.stage = 'file';
+    emitPlayer(me, 'call', publicCall(c));
+    const ch = byId[c.charId];
+    return { ok: true, file: { name: ch.name, avatar: ch.avatar, fund: c.fund, text: ch.scenarios[c.sIdx].file, q: ch.scenarios[c.sIdx].q } };
+  },
+
+  'call:choose'(conn, d, room, me) {
+    const c = me.call;
+    if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active' || c.stage !== 'file') return { error: 'no_call' };
+    const i = Number(d.option);
+    const ch = byId[c.charId]; const sc = ch.scenarios[c.sIdx];
+    if (!Number.isInteger(i) || i < 0 || i >= sc.o.length || c.removed.includes(i)) return { error: 'bad_option' };
+    if (i === sc.a) return heartSuccess(room, me, c, ch, sc);
+    c.tries++; c.removed.push(i); c.reply = sc.fail;
+    if (c.tries >= MAX_TRIES_CHOICE) return heartFail(room, me, c);
+    emitPlayer(me, 'call', publicCall(c));
+    return { ok: true, correct: false };
+  },
+
+  async 'call:reply'(conn, d, room, me) {
+    const c = me.call;
+    if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active' || c.stage !== 'file') return { error: 'no_call' };
+    if (!AI.aiEnabled()) return { error: 'ai_off' };
+    if (c.busy) return { error: 'slow_down' };
+    const text = cleanText(d.text, 400);
+    if (!text) return { error: 'empty' };
+    const ch = byId[c.charId]; const sc = ch.scenarios[c.sIdx]; const lang = me.lang;
+    c.busy = true;
+    c.chat.push({ who: 'player', text });
+    emitPlayer(me, 'call', publicCall(c));
+    const r = await AI.judgePatient({
+      rules: H.AI_RULES, character: L(lang, ch.name.he, ch.name.en), bio: L(lang, ch.bio.he, ch.bio.en),
+      file: L(lang, sc.file.he, sc.file.en), question: L(lang, sc.q.he, sc.q.en), correct: L(lang, sc.o[sc.a].he, sc.o[sc.a].en),
+      history: c.chat.slice(0, -1), text, lang
+    });
+    c.busy = false;
+    if (me.call !== c || c.status !== 'active') return { ok: true };
+    if (!r) { c.chat.pop(); emitPlayer(me, 'call', publicCall(c)); return { error: 'ai_failed' }; }
+    c.chat.push({ who: 'patient', text: r.reply });
+    if (r.success) return heartSuccess(room, me, c, ch, sc, r.reply);
+    c.tries++;
+    if (c.tries >= MAX_TRIES_TEXT) return heartFail(room, me, c);
+    emitPlayer(me, 'call', publicCall(c));
+    return { ok: true, correct: false };
+  },
+
+  'call:hangup'(conn, d, room, me) {
+    const c = me.call;
+    if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active') return { error: 'no_call' };
+    return heartFail(room, me, c, true);
   },
 
   // ─── chat ───
@@ -561,11 +683,29 @@ const handlers = {
 // Test-only: force the next caller (enabled with TEST_HOOKS=1)
 if (process.env.TEST_HOOKS) {
   handlers['test:force'] = (conn, d, room, me) => {
-    const ch = CALLER_POOL.find((x) => x.id === d.charId); if (!ch) return { error: 'bad' };
+    const ch = [...CALLER_POOL, ...HEART_POOL].find((x) => x.id === d.charId); if (!ch) return { error: 'bad' };
     clearTimeout(me.callTimer);
     const call = rollCallFor(ch); me.call = call; emitPlayer(me, 'call', publicCall(call));
     return { ok: true };
   };
+}
+
+function heartSuccess(room, me, c, ch, sc, aiReply) {
+  addMoney(room, me, ch.reward);
+  me.stats.answered++; me.stats.correct++;
+  if (ch.booster || c.world || ['epic', 'legendary'].includes(ch.rarity)) me.stats.rare.push(ch.id);
+  finishCall(room, me, { kind: 'heart', correct: true, delta: ch.reward, ok: sc.ok, aiReply: aiReply || null, booster: !!ch.booster, world: c.world || null });
+  if (ch.booster || c.world) {
+    const m = sysMsg(''); m.event = { type: 'rare', player: me.name, charId: ch.id, delta: ch.reward };
+    room.global.push(m); emitRoom(room, 'chat', { channel: 'global', msg: m });
+  }
+  return { ok: true, correct: true };
+}
+
+function heartFail(room, me, c, hungUp) {
+  me.stats.answered++;
+  finishCall(room, me, { kind: 'heart', correct: false, delta: 0, hungUp: !!hungUp, world: c.world || null });
+  return { ok: true, correct: false };
 }
 
 function claimTicket(room, t, admin) {
@@ -637,6 +777,14 @@ function startTunnel() {
 }
 
 // ───────────────────────── HTTP ─────────────────────────
+// Browser copy of the heart edition: names, bios and lines only — no questions or answers.
+const HEART_PUBLIC_JS = 'window.HEART=' + JSON.stringify({
+  CAST: H.CAST.map(({ scenarios, ...c }) => c),
+  MINECRAFT: H.MINECRAFT.map(({ scenarios, ...c }) => c),
+  PLANET: H.PLANET.map(({ scenarios, ...c }) => c),
+  INFO: H.INFO, MODES: H.MODES
+}) + ';';
+
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json', '.woff2': 'font/woff2'
@@ -646,6 +794,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/healthz') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ ok: true, rooms: rooms.size })); }
   let base = PUBLIC_DIR; let rel = url.pathname;
+  if (rel === '/shared/heart.js') { res.writeHead(200, { 'content-type': MIME['.js'], 'cache-control': 'no-cache' }); return res.end(HEART_PUBLIC_JS); }
   if (rel.startsWith('/shared/')) { base = SHARED_DIR; rel = rel.slice('/shared'.length); }
   if (rel === '/') rel = '/index.html';
   const file = path.normalize(path.join(base, decodeURIComponent(rel)));
