@@ -21,7 +21,7 @@
     view: null, homeMode: null, homeErr: '', online: false, room: null, me: null, prevPhase: null,
     chat: { global: [], help: [], lb: [] }, tickets: [], ticketMsgs: {}, chan: 'global', ticketOpen: null,
     unread: { global: 0, help: 0, lb: 0 }, showMembers: false,
-    call: null, callsTab: 'call', mdaTab: 'file', mdaFile: null, launching: false, typedFor: null, renderedKey: '',
+    call: null, callsTab: 'call', mdaTab: 'file', mdaFile: null, launching: false, pollsOpen: false, endKey: '', ringing: false, tasksOpenedFor: null, typedFor: null, renderedKey: '',
     wins: {}, z: 10, gameover: null, kicked: false, booting: false,
     discovered: new Set(store.get('medios.discovered', [])), lastMoney: 0
   };
@@ -69,6 +69,7 @@
     if (!Net.session || !S.room) return renderHome();
     const phase = S.room.phase;
     if (phase === 'lobby') renderLobby(force);
+    else if (phase === 'over' && S.room.end && (S.pollsOpen || S.room.end.stage !== 'feedback')) renderEnd(force);
     else renderDesktop(force);
     renderOverlays();
   }
@@ -233,8 +234,11 @@
     mda: { icon: '✚', cls: 'mda', title: () => t('app_mda'), w: 460, h: 580, render: renderMda },
     calls: { icon: '☎', cls: 'calls', title: () => t('app_calls'), w: 560, h: 620, render: renderCalls },
     chat: { icon: '✉', cls: 'chat', title: () => t('app_chat'), w: 820, h: 560, render: renderChat },
-    settings: { icon: '⚙', cls: 'settings', title: () => t('app_settings'), w: 440, h: 560, render: renderSettings }
+    settings: { icon: '⚙', cls: 'settings', title: () => t('app_settings'), w: 440, h: 560, render: renderSettings },
+    tasks: { icon: '☑', cls: 'tasks', title: () => t('app_tasks'), w: 360, h: 300, render: renderTasks }
   };
+  const LOCKED_AFTER_END = ['calls', 'mda', 'tasks'];
+  const appLocked = (id) => S.room && S.room.phase === 'over' && LOCKED_AFTER_END.includes(id);
 
   function renderDesktop(force) {
     if (S.view === 'desktop' && !force) { updateTopbar(); updateIcons(); return; }
@@ -274,6 +278,7 @@
 
   function openWin(id, geo, silent) {
     const ws = $('#ws'); if (!ws) return;
+    if (appLocked(id)) { sfx('error'); toast(`<span class="ta">🔒</span><span class="tt">${t('app_locked')}</span>`); return; }
     const a = APPS[id];
     let w = S.wins[id];
     if (w && w.el) { w.el.classList.remove('min'); focusWin(id); if (!silent) sfx('open'); a.render(w.body); renderTaskbar(); return; }
@@ -294,7 +299,7 @@
     w = S.wins[id] = { el, body: $('.wbody', el), open: true };
     el.addEventListener('pointerdown', () => focusWin(id));
     $('[data-w=close]', el).onclick = (e) => { e.stopPropagation(); closeWin(id); };
-    $('[data-w=min]', el).onclick = (e) => { e.stopPropagation(); el.classList.add('min'); sfx('close'); renderTaskbar(); };
+    $('[data-w=min]', el).onclick = (e) => { e.stopPropagation(); el.classList.add('min'); sfx('close'); renderTaskbar(); updateRing(); };
     dragify(el, $('.wbar', el));
     focusWin(id);
     if (!silent) sfx('open');
@@ -304,7 +309,11 @@
 
   function closeWin(id) {
     const w = S.wins[id]; if (!w) return;
-    w.el.remove(); S.wins[id] = { open: false }; sfx('close'); renderTaskbar();
+    w.el.remove(); S.wins[id] = { open: false }; sfx('close'); renderTaskbar(); updateRing();
+  }
+  function updateRing() {
+    const want = !!(S.view === 'desktop' && S.call && S.call.status === 'ringing' && isOpen('calls') && S.focused === 'calls');
+    if (want !== S.ringing) { S.ringing = want; Audio8.ring(want); if (want && isTalker(S.call)) sfx('mystery'); }
   }
   function focusWin(id) {
     for (const [k, w] of Object.entries(S.wins)) if (w.el) w.el.classList.toggle('focused', k === id);
@@ -312,6 +321,7 @@
     S.focused = id;
     if (id === 'chat') { S.unread[S.chan] = 0; updateIcons(); }
     renderTaskbar();
+    updateRing();
   }
   function isOpen(id) { const w = S.wins[id]; return !!(w && w.el && !w.el.classList.contains('min')); }
 
@@ -412,7 +422,7 @@
     if (S.mdaTab === 'file') {
       const c = S.call; const ch = charOf(c);
       const live = c && c.kind === 'heart' && c.status === 'active';
-      const hint = !live ? t('file_no_patient') : c.stage === 'greet' ? t('file_ask_first', { name: tc(ch.name) }) : c.stage === 'fund' ? t('file_type_number', { name: tc(ch.name) }) : t('file_opened');
+      const hint = !live ? t('file_no_patient') : c.stage === 'talk' ? t('file_ask_first', { name: tc(ch.name) }) : c.stage === 'fund' ? t('file_type_number', { name: tc(ch.name) }) : t('file_opened');
       const f = S.mdaFile;
       inner = `<form class="file-search" id="file-form" autocomplete="off">
           <label for="file-num">${t('fund_number')}</label>
@@ -421,6 +431,7 @@
         </form>
         ${f ? `<article class="file-card">
           <header><span class="fa">${f.avatar}</span><div><b>${esc(tc(f.name))}</b><div class="mono dim">${t('fund_number')}: ${esc(f.fund)}</div></div><span class="badge admin">${t('file_badge')}</span></header>
+          ${f.card ? `<dl class="card-grid"><dt>${t('card_age')}</dt><dd>${esc(tc(f.card.age))}</dd><dt>${t('card_job')}</dt><dd>${esc(tc(f.card.job))}</dd><dt>${t('card_history')}</dt><dd>${esc(tc(f.card.history))}</dd></dl>` : ''}
           <h4>${t('file_complaint')}</h4><p>${esc(tc(f.text))}</p>
           <h4>${t('file_question')}</h4><p class="file-q">${esc(tc(f.q))}</p>
           ${live && c.stage === 'file' ? `<button class="btn info" data-back-call>☎ ${t('back_to_call')}</button>` : ''}
@@ -436,7 +447,7 @@
     if (form) {
       const inp = $('#file-num', body);
       inp.oninput = () => { inp.value = inp.value.replace(/[^\d-]/g, ''); };
-      if (S.call && S.call.kind === 'heart' && S.call.stage === 'fund') setTimeout(() => inp.focus(), 50);
+      if (S.call && S.call.kind === 'heart' && S.call.stage === 'fund') { inp.value = ''; setTimeout(() => inp.focus(), 50); }
       form.onsubmit = async (e) => {
         e.preventDefault();
         const r = await Net.request('mda:lookup', { number: inp.value });
@@ -445,6 +456,17 @@
       };
     }
     const back = $('[data-back-call]', body); if (back) back.onclick = () => openWin('calls');
+  }
+
+  // ───────────────────────── Tasks app ─────────────────────────
+  function tasksHtml(c) {
+    return HT.TASKS.map((tk) => { const done = !!(c && c.tasks && c.tasks[tk.id]); return `<li class="task-item ${done ? 'done' : ''}"><span class="tbox">${done ? '✔' : ''}</span><span>${esc(tc(tk))}</span></li>`; }).join('');
+  }
+  function renderTasks(body) {
+    if (!body) { const w = S.wins.tasks; if (!w || !w.el) return; body = w.body; }
+    const c = S.call; const live = c && c.kind === 'heart' && c.status !== 'ringing';
+    body.innerHTML = `<div class="tasks-app"><div class="dim" style="font-size:.85rem;margin-bottom:8px">${live ? esc(tc(charOf(c).name)) : t('tasks_none')}</div>
+      <ul class="task-list">${tasksHtml(live ? c : null)}</ul></div>`;
   }
 
   // ───────────────────────── Settings app ─────────────────────────
@@ -512,7 +534,7 @@
     const c = S.call; if (!c) return 'idle';
     const ch = charOf(c);
     let k = `${c.id}|${c.status}|${settings.lang}`;
-    if (c.kind === 'heart') k += `|${c.stage}|${c.tries}|${(c.chat || []).length}|${c.result ? 1 : 0}`;
+    if (c.kind === 'heart') k += `|${c.stage}|${c.tries}|${(c.chat || []).length}|${(c.talk || []).length}|${c.result ? 1 : 0}`;
     else if (c.status === 'active' && c.kind !== 'regular') k += '|' + linesShown(c, ch) + '|' + (isTalker(c) && talkReady(c));
     return k;
   }
@@ -631,11 +653,14 @@
     };
   }
 
+  function talkLine(m) {
+    return m.who === 'player' ? `<div class="line me-line">🧑‍⚕️ ${esc(m.text)}</div>` : `<div class="line patient-reply">💬 ${esc(tc(m))}</div>`;
+  }
   function renderHeart(stage, c, ch, head, stars) {
     const done = c.status === 'done';
     const res = c.result;
     const tag = (n, boost) => `<div class="reward-chip">[${t('reward_tag')}: ${n.toLocaleString('en-US')} ${t('coins')}${boost ? ' / ' + t('bonus') : ''}]</div>`;
-    let html = `${stars}${head(false)}<div class="bubble" id="c-bubble"></div>`;
+    let html = `${stars}${head(false)}`;
     if (done) {
       if (res.correct) {
         html += `<div class="result good">${t('heart_saved')}</div><div class="delta plus">+${money(res.delta)}</div>
@@ -645,13 +670,15 @@
       }
       html += `<div class="stage-title" style="font-size:1.2rem">${res.world === 'planet' ? t('back_earth') : res.world === 'minecraft' ? t('back_earth_mc') : t('next_call_soon')}</div>`;
       stage.innerHTML = html;
-      $('#c-bubble').textContent = tc(ch.hello);
       return;
     }
-    if (c.stage === 'greet') {
-      html += `<button class="btn primary big" id="h-fund">📋 ${t('ask_fund')}</button>`;
-    } else if (c.stage === 'fund') {
-      html += `<div class="line fund-line">${esc(t('fund_says'))} <b class="mono fund-no">${esc(c.fund)}</b></div>
+    html += `<ul class="task-list inline">${tasksHtml(c)}</ul>`;
+    html += `<div class="talk">${c.talk.length ? c.talk.map(talkLine).join('') : `<div class="dim talk-empty">${t('you_write_first')}</div>`}</div>`;
+    if (c.stage !== 'file') {
+      const presets = HT.PRESETS.filter((pr) => !(c.tasks[pr.task]) || pr.task === 'fund' && c.stage === 'talk');
+      html += `<div class="presets talk-presets">${presets.map((pr) => `<button class="preset" data-pr="${pr.id}">${esc(tc(pr))}</button>`).join('')}</div>
+        <form class="composer" id="h-say" style="border:none;padding:6px 0 0;width:100%;max-width:560px"><input class="input" id="h-say-in" maxlength="300" placeholder="${t('say_ph')}" autocomplete="off"><button class="btn primary">${t('send')}</button></form>`;
+      if (c.stage === 'fund') html += `<div class="fund-box"><span>${t('fund_number')}:</span> <b class="mono fund-no">${esc(c.fund)}</b></div>
         <div class="step-hint">① ${t('step_open_mda')}<br>② ${t('step_type_number')}</div>
         <button class="btn info big" id="h-mda">✚ ${t('open_mda_file')}</button>`;
     } else {
@@ -665,8 +692,12 @@
     }
     html += `<button class="btn small danger" id="h-hang" style="margin-top:10px">☎ ${t('hang_up')}</button>`;
     stage.innerHTML = html;
-    typeInto($('#c-bubble'), tc(ch.hello), c.id + ':hello');
-    const fund = $('#h-fund'); if (fund) fund.onclick = async () => { fund.disabled = true; sfx('click'); const r = await Net.request('call:fund', { callId: c.id }); if (r.error) { fund.disabled = false; toastErr(r.error); } };
+    const say = async (payload) => { const r = await Net.request('call:say', { callId: c.id, ...payload }); if (r.error) toastErr(r.error); else sfx('msg'); return r; };
+    $$('[data-pr]', stage).forEach((b) => b.onclick = () => { $$('[data-pr]', stage).forEach((x) => (x.disabled = true)); say({ presetId: b.dataset.pr }); });
+    const sf = $('#h-say'); if (sf) {
+      const inp = $('#h-say-in'); if (window.innerWidth > 760) setTimeout(() => inp.focus(), 30);
+      sf.onsubmit = async (e) => { e.preventDefault(); const text = inp.value.trim(); if (!text) return; inp.disabled = true; const r = await say({ text }); if (r.error) inp.disabled = false; };
+    }
     const mda = $('#h-mda'); if (mda) mda.onclick = () => { S.mdaTab = 'file'; S.mdaFile = null; openWin('mda'); renderMda(); };
     $$('[data-o]', stage).forEach((b) => b.onclick = async () => {
       $$('[data-o]', stage).forEach((x) => (x.disabled = true));
@@ -683,7 +714,8 @@
       if (r.error) { inp.disabled = false; toastErr(r.error); }
     };
     const hang = $('#h-hang'); if (hang) hang.onclick = async () => { hang.disabled = true; await Net.request('call:hangup', { callId: c.id }); };
-    stage.scrollTop = c.stage === 'file' ? stage.scrollTop : 0;
+    const talk = $('.talk', stage); if (talk) talk.scrollTop = talk.scrollHeight;
+    if (c.stage !== 'file') stage.scrollTop = stage.scrollHeight;
   }
   function byIdOk(c) { return c.result && c.result.ok; }
 
@@ -724,15 +756,20 @@
     const prev = S.call;
     S.call = call;
     if (call && (!prev || prev.id !== call.id) && call.status === 'ringing') {
-      Audio8.ring(true);
-      if (isTalker(call)) sfx('mystery');
-      if (!isOpen('calls') || S.focused !== 'calls') {
+      if (!isOpen('calls') || S.focused !== 'calls') { // silent outside the Calls app
+
         const ch = charOf(call);
         toast(`<span class="ta">${isTalker(call) ? '👤' : ch.avatar}</span><span class="tt"><b>${t('incoming')}</b><br>${isTalker(call) ? t('unknown_caller') : esc(tc(ch.name))}</span><span class="btn small info">${t('open')}</span>`,
           { cls: 'call', ms: 6000, onClick: () => openWin('calls') });
       }
     }
-    if (!call || call.status !== 'ringing') Audio8.ring(false);
+    updateRing();
+    // Tasks app comes up for heart calls (desktop); the call screen also shows the tasks
+    if (call && call.kind === 'heart' && call.status === 'active' && S.tasksOpenedFor !== call.id) {
+      S.tasksOpenedFor = call.id;
+      if (window.innerWidth > 760 && !isOpen('tasks')) { openWin('tasks', null, true); focusWin('calls'); }
+    }
+    if (isOpen('tasks')) renderTasks();
     if (call && call.status === 'active') { S.discovered.add(call.charId); store.set('medios.discovered', [...S.discovered]); }
     if (call && call.status === 'done' && (!prev || prev.status !== 'done' || prev.id !== call.id)) {
       const r = call.result;
@@ -808,6 +845,7 @@
       case 'closed': return t('ev_closed', ev);
       case 'join': return t('ev_join', ev);
       case 'start': return t('ev_start');
+      case 'polls': return t('ev_polls');
       case 'muted': return t('ev_muted', ev);
       case 'unmuted': return t('ev_unmuted', ev);
       case 'kicked': return t('ev_kicked', ev);
@@ -818,6 +856,7 @@
 
   function msgHtml(m) {
     if (m.from.role === 'system') {
+      if (m.event && m.event.type === 'polls') return `<div class="msg sys rare">${esc(evText(m.event))}<br><button class="btn primary" data-open-polls style="margin-top:6px">📊 ${t('open_polls')}</button></div>`;
       const txt = m.event ? evText(m.event) : m.text;
       return `<div class="msg sys ${m.event?.type === 'rare' ? 'rare' : ''}">${esc(txt)}</div>`;
     }
@@ -907,13 +946,194 @@
           ${canMod ? `<div class="macts">
             <button class="btn small warn" data-mute="${p.id}" data-min="${p.muted ? 0 : 5}">${p.muted ? t('unmute') : t('mute_5')}</button>
             <button class="btn small danger" data-kick="${p.id}">${t('kick')}</button>
-            ${me.isHost ? `<button class="btn small info" data-promote="${p.id}">${p.isAdmin ? t('remove_admin') : t('make_admin')}</button>` : ''}</div>` : ''}</div>`;
+            ${me.isHost ? `<button class="btn small info" data-promote="${p.id}">${p.isAdmin ? t('remove_admin') : t('make_admin')}</button>` : ''}</div>` : ''}
+          ${me.isAdmin && !p.bot ? `<div class="macts"><button class="btn small" data-hist="${p.id}">📜 ${t('history')}</button><button class="btn small warn" data-money="${p.id}">${me.isHost ? '± ' + t('money_adjust') : '💡 ' + t('suggest')}</button></div>` : ''}</div>`;
       }).join('');
     $('[data-x]', el).onclick = () => { S.showMembers = false; renderChat(); };
     $$('[data-mute]', el).forEach((b) => b.onclick = async () => { const r = await Net.request('mod:mute', { targetId: b.dataset.mute, minutes: Number(b.dataset.min) }); if (r.error) toastErr(r.error); });
     $$('[data-kick]', el).forEach((b) => b.onclick = async () => { const r = await Net.request('mod:kick', { targetId: b.dataset.kick }); if (r.error) toastErr(r.error); });
     $$('[data-promote]', el).forEach((b) => b.onclick = async () => { const r = await Net.request('lobby:promote', { targetId: b.dataset.promote }); if (r.error) toastErr(r.error); });
+    bindAdminButtons(el);
   }
+
+  // ───────────────────────── manager tools (modal) ─────────────────────────
+  function closeModal() { const m = $('#ov-admin'); if (m) m.remove(); }
+  function openModal(inner) {
+    closeModal();
+    $('#overlay').insertAdjacentHTML('beforeend', `<div class="ov" id="ov-admin"><div class="modal admin-modal">${inner}<div style="text-align:end;margin-top:12px"><button class="btn ghost" data-close-modal>${t('close')}</button></div></div></div>`);
+    const ov = $('#ov-admin');
+    ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-close-modal]')) closeModal(); });
+    return ov;
+  }
+  function playerName(id) { const p = (S.room?.players || []).find((x) => x.id === id); return p ? p.name : ''; }
+  async function showHistory(id) {
+    const ov = openModal(`<h2>📜 ${t('history')} · ${esc(playerName(id))}</h2><div class="dim">${t('loading')}</div>`);
+    const r = await Net.request('admin:history', { targetId: id, ai: true });
+    if (!$('#ov-admin')) return;
+    if (r.error) { $('.modal', ov).innerHTML = `<p class="err">${esc(errText(r.error))}</p>`; return; }
+    const tm = (ts) => new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    $('.modal', ov).innerHTML = `<h2>📜 ${t('history')} · ${esc(r.name)}</h2>
+      <div class="hist-sum"><b>${r.byAI ? '🤖 ' + t('ai_summary') : t('auto_summary')}:</b> ${esc(tc(r.summary))}</div>
+      <div class="dim" style="margin:6px 0">${money(r.money)} · ${r.stats.correct}/${r.stats.answered} ${t('answered')}</div>
+      <ol class="hist-list">${r.log.length ? r.log.map((l) => `<li><span class="mono dim">${tm(l.ts)}</span> ${esc(tc(l))} ${l.delta ? `<b class="${l.delta > 0 ? 'pos' : 'neg'}">${l.delta > 0 ? '+' : '−'}${Math.abs(l.delta)}</b>` : ''}</li>`).join('') : `<li class="dim">${t('hist_empty')}</li>`}</ol>
+      ${S.me?.isAdmin ? moneyForm(id) : ''}
+      <div style="text-align:end;margin-top:12px"><button class="btn ghost" data-close-modal>${t('close')}</button></div>`;
+    bindMoneyForm(ov, id);
+  }
+  function moneyForm(id) {
+    return `<form class="money-form" data-mf="${id}"><b>${S.me.isHost ? t('money_adjust') : t('suggest_title')}</b>
+      <div class="file-row"><input class="input" type="number" step="10" id="mf-amt" placeholder="${t('amount_ph')}" required><input class="input" id="mf-why" maxlength="60" placeholder="${t('reason_ph')}"></div>
+      <div class="file-row"><button class="btn primary" data-sign="1">＋ ${S.me.isHost ? t('add_money') : t('suggest_bonus')}</button><button class="btn danger" data-sign="-1">− ${S.me.isHost ? t('remove_money') : t('suggest_fine')}</button></div></form>`;
+  }
+  function bindMoneyForm(root, id) {
+    const f = $('[data-mf]', root); if (!f) return;
+    $$('[data-sign]', f).forEach((b) => b.onclick = async (e) => {
+      e.preventDefault();
+      const amt = Math.abs(Number($('#mf-amt', f).value)); if (!amt) return toastErr('bad_amount');
+      const amount = amt * Number(b.dataset.sign); const reason = $('#mf-why', f).value;
+      const r = await Net.request(S.me.isHost ? 'admin:adjust' : 'admin:suggest', { targetId: id, amount, reason });
+      if (r.error) return toastErr(r.error);
+      sfx('coin'); toast(`<span class="ta">✓</span><span class="tt">${S.me.isHost ? t('money_done', { name: playerName(id), n: (amount > 0 ? '+' : '') + amount }) : t('suggest_sent')}</span>`);
+      if (S.me.isHost) showHistory(id); else closeModal();
+    });
+  }
+  function bindAdminButtons(root) {
+    $$('[data-hist]', root).forEach((b) => b.onclick = () => showHistory(b.dataset.hist));
+    $$('[data-money]', root).forEach((b) => b.onclick = () => { const ov = openModal(`<h2>${esc(playerName(b.dataset.money))}</h2>${moneyForm(b.dataset.money)}`); bindMoneyForm(ov, b.dataset.money); });
+  }
+
+  // ───────────────────────── end of game: Polls & Feedback ─────────────────────────
+  const STAGE_LABEL = { feedback: 'st_feedback', poll1: 'st_poll1', poll2: 'st_poll2', poll3: 'st_poll3', board: 'st_board', podium: 'st_podium' };
+  function renderEnd(force) {
+    const E = S.room.end; const me = S.me || {};
+    // personal bits are part of the key so votes/feedback re-render
+    const key = JSON.stringify([E.stage, settings.lang, E.poll1, E.feedbackCount, E.poll2, E.poll3, E.board, E.podium && E.podium.startedAt, E.podium && E.podium.top.map((x) => x.note), me.endVote, me.voteBlocked, !!me.endFeedback, me.isHost, me.isAdmin]);
+    if (S.view === 'end' && !force && key === S.endKey) return;
+    const typing = document.activeElement && document.activeElement.id === 'fb-text';
+    if (S.view === 'end' && E.stage === 'feedback' && typing && !force) { const c = $('#fb-count'); if (c) c.textContent = t('fb_count', { n: E.feedbackCount, m: E.playerCount }); return; }
+    const firstPaint = S.view !== 'end';
+    S.view = 'end'; S.endKey = key;
+    Audio8.ring(false); S.ringing = false;
+    const idx = E.stages.indexOf(E.stage);
+    let body = '';
+    if (E.stage === 'feedback') body = endFeedback(E, me);
+    else if (E.stage === 'poll1') body = endPoll1(E, me);
+    else if (E.stage === 'poll2') body = endPoll2(E);
+    else if (E.stage === 'poll3') body = endPoll3(E);
+    else if (E.stage === 'board') body = endBoard(E, me);
+    else body = endPodium(E);
+    const left = E.board ? E.board.hidden.length : 0;
+    $('#app').innerHTML = `<section class="screen endscreen ${firstPaint ? '' : 'still'}">
+      <header class="end-head"><span class="brand mono">📊 ${t('app_polls')}</span>
+        <ol class="stage-dots">${E.stages.map((st, i) => `<li class="${i < idx ? 'past' : i === idx ? 'now' : ''}" title="${t(STAGE_LABEL[st])}">${i + 1}</li>`).join('')}</ol>
+        <span class="end-stage">${t(STAGE_LABEL[E.stage])}</span></header>
+      <div class="end-body">${body}</div>
+      ${me.isHost ? `<footer class="host-bar"><span class="dim">${E.stage === 'board' && left ? t('host_reveal_hint', { n: left }) : E.stage === 'podium' ? t('host_podium_hint') : t('host_space_hint')}</span>
+        ${E.stage !== 'podium' ? `<button class="btn primary big" id="end-next">${E.stage === 'board' && left ? t('reveal_next') : t('next_stage')} <kbd>␣ Space</kbd></button>` : `<button class="btn primary big" data-lobby>${t('back_lobby')}</button>`}</footer>` : `<footer class="host-bar"><span class="dim">${t('wait_host_space')}</span></footer>`}
+    </section>`;
+    bindEnd(E, me);
+  }
+  function endFeedback(E, me) {
+    if (me.endFeedback) return `<div class="end-card"><h2>✓ ${t('fb_thanks')}</h2><p class="dim">${t('fb_yours', { n: me.endFeedback.rating })}</p><p id="fb-count" class="dim">${t('fb_count', { n: E.feedbackCount, m: E.playerCount })}</p></div>`;
+    return `<form class="end-card" id="fb-form"><h2>${t('fb_title')}</h2>
+      <label class="dim" for="fb-text">${t('fb_text_label')}</label>
+      <textarea class="input" id="fb-text" maxlength="300" rows="3" placeholder="${t('fb_ph')}"></textarea>
+      <div class="dim" style="margin-top:8px">${t('fb_rate')}</div>
+      <div class="rate-row" role="radiogroup">${Array.from({ length: 10 }, (_, i) => `<button type="button" class="rate" role="radio" aria-checked="false" data-rate="${i + 1}">${i + 1}</button>`).join('')}</div>
+      <button class="btn primary big" id="fb-send" disabled>${t('send')}</button>
+      <p id="fb-count" class="dim">${t('fb_count', { n: E.feedbackCount, m: E.playerCount })}</p></form>`;
+  }
+  function pctOf(n, tot) { return tot ? Math.round((100 * n) / tot) : 0; }
+  function endPoll1(E, me) {
+    const P = E.poll1; const voted = me.endVote || me.voteBlocked;
+    const bar = (k, label, cls) => `<div class="vbar ${cls}"><div class="vlabel"><b>${label}</b><span class="mono">${pctOf(P[k], P.total)}% · ${P[k]} ${t('votes')}</span></div><div class="vtrack"><i style="width:${pctOf(P[k], P.total)}%"></i></div></div>`;
+    return `<div class="end-card wide"><h2>${t('poll1_q')}</h2>
+      ${me.voteBlocked ? `<p class="err">🤖 ${t('vote_bot')}</p>` : ''}
+      ${!voted ? `<div class="vote-row"><button class="vote george" data-vote="george">GEORGE</button><button class="vote ducky" data-vote="ducky">Mr_Ducky</button></div><button class="btn ghost" data-vote="skip">${t('skip')}</button>` : `<p class="dim">${me.endVote === 'skip' ? t('you_skipped') : me.endVote ? t('you_voted', { x: me.endVote === 'george' ? 'GEORGE' : 'Mr_Ducky' }) : ''}</p>`}
+      <div class="vbars">${bar('george', 'GEORGE', 'george')}${bar('ducky', 'Mr_Ducky', 'ducky')}${bar('skip', t('skip'), 'skip')}</div>
+      <p class="dim mono">${t('votes_total', { n: P.total })}${P.blocked ? ' · ' + t('votes_blocked', { n: P.blocked }) : ''}</p></div>`;
+  }
+  function endPoll2(E) {
+    const P = E.poll2 || { pct: 0, success: 0, total: 0, filtered: 0, accuracy: 0 };
+    return `<div class="end-card wide"><h2>${t('poll2_title')}</h2>
+      <div class="big-stat"><span class="mono">${P.pct}%</span><small>${t('poll2_sub', { a: P.success, b: P.total })}</small></div>
+      <div class="vbar"><div class="vtrack"><i style="width:${P.pct}%"></i></div></div>
+      <div class="stat-row"><div><b class="mono">${P.accuracy}%</b><span>${t('poll2_acc')}</span></div><div><b class="mono">${P.filtered}</b><span>${t('poll2_filtered')}</span></div></div>
+      <p class="dim" style="font-size:.85rem">🤖 ${t('poll2_bot')}</p></div>`;
+  }
+  function endPoll3(E) {
+    const P = E.poll3 || { reviews: [], score: 0, count: 0, summary: { he: '', en: '' } };
+    return `<div class="end-card wide"><h2>${t('poll3_title')}</h2>
+      <div class="score-hero"><span class="mono">${P.score.toFixed(1)}</span><small>/10 · ${t('poll3_weighted', { n: P.count })}</small></div>
+      <p class="summary-line">${P.byAI ? '🤖 ' + t('ai_summary') : t('auto_summary')}: ${esc(tc(P.summary))}</p>
+      <div class="reviews">${P.reviews.length ? P.reviews.map((r) => `<figure class="review"><div class="rscore mono">${r.rating}/10</div><blockquote>${r.text ? esc(r.text) : `<span class="dim">${t('no_text')}</span>`}</blockquote><figcaption>— ${esc(r.name)}</figcaption></figure>`).join('') : `<p class="dim">${t('no_reviews')}</p>`}</div></div>`;
+  }
+  function endBoard(E, me) {
+    const B = E.board || { revealed: [], hidden: [] };
+    const adminBtns = (id) => me.isAdmin ? `<span class="row-acts"><button class="btn small" data-hist="${id}" title="${t('history')}">📜</button><button class="btn small warn" data-money="${id}" title="${t('money_adjust')}">±</button></span>` : '';
+    return `<div class="board-wrap">
+      <div class="board-main"><h3>${t('board_main')}</h3><ol class="rank-table">${B.revealed.length ? B.revealed.map((p, i) => `<li class="${p.id === B.last ? 'fly-in' : ''} ${p.id === me.id ? 'me' : ''}"><span class="rk mono">${i + 1}</span><span class="rn">${esc(p.name)}</span><span class="rm mono">${money(p.money)}</span>${adminBtns(p.id)}</li>`).join('') : `<li class="dim empty">${t('board_empty')}</li>`}</ol></div>
+      <div class="board-names"><h3>${t('board_names')} (${B.hidden.length})</h3><ul>${B.hidden.map((p) => `<li>${esc(p.name)}</li>`).join('')}</ul></div></div>`;
+  }
+  function endPodium(E) {
+    const P = E.podium; if (!P) return '';
+    const el = Math.max(0, Net.serverNow() - P.startedAt);
+    const order = [2, 1, 0]; // third, second, first
+    const slot = (place) => {
+      const p = P.top[place]; if (!p) return '';
+      const showAt = order.indexOf(place) * 10000; const on = el >= showAt;
+      const ach = p.achievements;
+      return `<div class="pod2 p${place + 1} ${on ? 'on' : ''}" style="--delay:${showAt}ms">
+        <div class="pod-card"><div class="medal">${['🥇', '🥈', '🥉'][place]}</div><div class="pn">${esc(p.name)}</div><div class="pm mono">${money(p.money)}</div>
+          <div class="pscore"><span class="mono">${p.score}</span><small>${t('player_score')}</small></div>
+          <div class="ach-slides">${ach.map((a, i) => `<div class="ach" style="--i:${i};--n:${ach.length}">${esc(tc(a))}</div>`).join('')}</div>
+          ${p.note ? `<p class="pnote">🤖 ${esc(tc(p.note))}</p>` : ''}
+          <ul class="phist">${p.history.map((h) => `<li>${esc(tc(h))}</li>`).join('')}</ul></div>
+        <div class="block mono">${place + 1}</div></div>`;
+    };
+    return `<div class="podium2" data-start="${P.startedAt}">${slot(1)}${slot(0)}${slot(2)}</div>`;
+  }
+  function bindEnd(E, me) {
+    const app = $('#app');
+    const next = $('#end-next', app); if (next) next.onclick = advanceEnd;
+    const bl = $('[data-lobby]', app); if (bl) bl.onclick = () => Net.request('game:lobby', {});
+    const form = $('#fb-form', app);
+    if (form) {
+      let rating = 0;
+      $$('[data-rate]', form).forEach((b) => b.onclick = () => { rating = Number(b.dataset.rate); $$('[data-rate]', form).forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', x === b); }); $('#fb-send', form).disabled = false; sfx('click'); });
+      form.onsubmit = async (e) => { e.preventDefault(); if (!rating) return; const r = await Net.request('end:feedback', { rating, text: $('#fb-text', form).value }); if (r.error) toastErr(r.error); else sfx('success'); };
+    }
+    $$('[data-vote]', app).forEach((b) => b.onclick = async () => { $$('[data-vote]', app).forEach((x) => (x.disabled = true)); const r = await Net.request('end:vote', { choice: b.dataset.vote }); if (r.error) toastErr(r.error); else sfx('coin'); });
+    bindAdminButtons(app);
+    const fly = $('.fly-in', app); if (fly) sfx('coin');
+    $$('.ach-slides', app).forEach((box) => { const f = $('.ach', box); if (f) f.classList.add('on'); });
+    if (E.stage === 'podium' && !S.podiumTick) {
+      sfx('jackpot');
+      S.podiumTick = setInterval(() => {
+        if (S.view !== 'end' || !S.room.end || S.room.end.stage !== 'podium') { clearInterval(S.podiumTick); S.podiumTick = null; return; }
+        const el = Net.serverNow() - S.room.end.podium.startedAt;
+        $$('.pod2', app).forEach((d) => { const at = parseInt(d.style.getPropertyValue('--delay'), 10) || 0; if (el >= at && !d.classList.contains('on')) { d.classList.add('on'); sfx('success'); } });
+        // achievements slideshow: one at a time, 2.5 s each
+        const step = Math.floor(el / 2500);
+        $$('.ach-slides', app).forEach((box) => { const items = $$('.ach', box); items.forEach((it, i) => it.classList.toggle('on', i === step % items.length)); });
+      }, 250);
+    }
+  }
+  async function advanceEnd() {
+    if (!S.me?.isHost || S.view !== 'end') return;
+    const b = $('#end-next'); if (b) b.disabled = true;
+    const r = await Net.request('end:next', {});
+    if (r.error) { toastErr(r.error); if (b) b.disabled = false; }
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || S.view !== 'end' || !S.me?.isHost) return;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (/INPUT|TEXTAREA|SELECT/.test(tag) || $('#ov-admin')) return;
+    e.preventDefault(); advanceEnd();
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-open-polls]')) { S.pollsOpen = true; sfx('open'); route(true); }
+  });
 
   function chatVisible(chan) { return isOpen('chat') && S.chan === chan; }
 
@@ -952,19 +1172,6 @@
       }
     } else if (rn) rn.remove();
 
-    // game over
-    let go = $('#ov-over');
-    if (S.room?.phase === 'over' && S.gameover) {
-      const b = S.gameover.board;
-      const html = `<div class="modal"><h2 style="text-align:center">🏁 ${t('over_t')}</h2><p style="text-align:center">${t('over_d')}</p>
-        <div class="podium">${[1, 0, 2].map((i) => b[i] ? `<div class="pod p${i + 1}"><span style="font-size:1.8rem">${['🥇', '🥈', '🥉'][i]}</span><span class="pn">${esc(b[i].name)}</span><span class="pm">${money(b[i].money)}</span><div class="block">${i + 1}</div></div>` : '').join('')}</div>
-        <div style="max-height:28vh;overflow:auto"><table class="final-table">${b.map((p, i) => `<tr class="${p.id === S.me?.id ? 'me' : ''}"><td class="r">${i + 1}</td><td>${esc(p.name)} <span class="dim" style="font-size:.78rem">· ${p.correct}/${p.answered} ${t('answered')}</span></td><td class="m">${money(p.money)}</td></tr>`).join('')}</table></div>
-        <div class="over-actions">${S.me?.isHost ? `<button class="btn primary big" data-lobby>${t('back_lobby')}</button>` : `<div class="waiting" style="font-size:1.2rem">${t('waiting_host')}</div>`}<button class="btn danger" data-leave>${t('leave')}</button></div></div>`;
-      if (!go) { root.insertAdjacentHTML('beforeend', `<div class="ov over" id="ov-over"></div>`); go = $('#ov-over'); sfx('jackpot'); Audio8.ring(false); }
-      go.innerHTML = html;
-      const bl = $('[data-lobby]', go); if (bl) bl.onclick = () => Net.request('game:lobby', {});
-      $('[data-leave]', go).onclick = leaveRoom;
-    } else if (go) go.remove();
   }
 
   function showKicked() {
@@ -1000,9 +1207,16 @@
       S.wins = {}; S.call = null; S.chat.lb = []; S.chat.help = [];
       bootSequence();
     }
-    if (prevPhase && prevPhase !== 'lobby' && room.phase === 'lobby') { $('#overlay').innerHTML = ''; S.call = null; }
+    if (prevPhase && prevPhase !== 'lobby' && room.phase === 'lobby') { $('#overlay').innerHTML = ''; S.call = null; S.pollsOpen = false; S.view = null; }
+    if (prevPhase === 'playing' && room.phase === 'over') {
+      // timer over: lock Calls/MDA/Tasks, open the global chat with the polls link
+      for (const id of LOCKED_AFTER_END) if (S.wins[id] && S.wins[id].el) { S.wins[id].el.remove(); S.wins[id] = { open: false }; }
+      S.call = null; Audio8.ring(false); S.ringing = false; sfx('jackpot');
+      if (S.view === 'desktop') { S.chan = 'global'; openWin('chat'); renderChat(); renderTaskbar(); }
+    }
     route();
     if (S.view === 'desktop') {
+      $$('.dicon').forEach((b) => b.classList.toggle('locked', appLocked(b.dataset.app)));
       if (isOpen('chat')) { renderChans(); renderMembers(); }
       if (S.callsTab === 'call' && !S.call) renderStage(null, true);
     }
@@ -1054,7 +1268,12 @@
     if (isOpen('chat')) renderChans();
     updateIcons();
   });
-  Net.on('gameover', (d) => { S.gameover = d; renderOverlays(); });
+  Net.on('suggest', (d) => {
+    sfx('msg');
+    const el = toast(`<span class="ta">💡</span><span class="tt"><b>${esc(d.from)}</b> ${esc(t('suggest_in', { name: d.targetName, n: (d.amount > 0 ? '+' : '') + d.amount }))}${d.reason ? `<br><span class="dim">${esc(d.reason)}</span>` : ''}</span><button class="btn small primary" data-ok>${t('approve')}</button>`, { ms: 15000 });
+    $('[data-ok]', el).onclick = async () => { const r = await Net.request('admin:adjust', { targetId: d.targetId, amount: d.amount, reason: d.reason, suggestedBy: d.fromId }); if (r.error) toastErr(r.error); else { sfx('coin'); el.remove(); } };
+  });
+  Net.on('suggest:done', (d) => toast(`<span class="ta">✓</span><span class="tt">${esc(t('suggest_approved', { name: d.targetName, n: (d.amount > 0 ? '+' : '') + d.amount }))}</span>`));
   Net.on('kicked', () => { Net.saveSession(null); S.kicked = true; route(); });
   Net.on('session:lost', (r) => {
     S.room = null; S.me = null;

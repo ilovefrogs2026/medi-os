@@ -181,4 +181,40 @@ Return ONLY a JSON object: {"reply": "<your in-character reply>", "success": tru
   } catch (_) { return null; }
 }
 
-module.exports = { helpReply, helpBrief, lbReply, judgePatient, aiEnabled: () => !!API_KEY };
+// Ask Claude for a small JSON object. Returns the parsed object or null.
+async function aiJSON(system, user, maxTokens = 400) {
+  const out = await callClaude(system + '\nReturn ONLY one JSON object, nothing else.', user, maxTokens);
+  if (!out) return null;
+  const m = out.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch (_) { return null; }
+}
+
+// End-of-game feedback: weighted score (1-10) + one summary sentence in Hebrew and English
+async function summarizeFeedback(reviews) {
+  if (!API_KEY || !reviews.length) return null;
+  const list = reviews.map((r, i) => `${i + 1}. score ${r.rating}/10: ${r.text || '(no text)'}`).join('\n');
+  const j = await aiJSON('You summarise player feedback for a classroom medical game. Weigh written reviews more than bare scores. Be fair and concise.',
+    `Feedback:\n${list}\n\nReply as {"score": <number 1-10 with one decimal>, "he": "<one Hebrew sentence>", "en": "<one English sentence>"}`, 300);
+  if (!j || typeof j.score !== 'number' || typeof j.he !== 'string') return null;
+  return { score: Math.max(1, Math.min(10, Math.round(j.score * 10) / 10)), he: j.he.slice(0, 300), en: String(j.en || '').slice(0, 300) };
+}
+
+// Short history summary of one player's game (for managers)
+async function historySummary(name, lines) {
+  if (!API_KEY || !lines.length) return null;
+  const j = await aiJSON('You write a short, fair summary of how one player played a classroom medical-dispatch game, for the teacher.',
+    `Player: ${name}\nEvents:\n${lines.join('\n')}\n\nReply as {"he": "<2 Hebrew sentences>", "en": "<2 English sentences>"}`, 300);
+  return j && typeof j.he === 'string' ? { he: j.he.slice(0, 400), en: String(j.en || '').slice(0, 400) } : null;
+}
+
+// One encouraging line per podium player
+async function podiumNotes(players) {
+  if (!API_KEY || !players.length) return null;
+  const list = players.map((p, i) => `${i + 1}. ${p.name}: ${p.lines.join('; ')}`).join('\n');
+  const j = await aiJSON('You celebrate the top 3 players of a classroom medical game with one short, specific line each.',
+    `${list}\n\nReply as {"notes": [{"he": "...", "en": "..."}, ...]} in the same order.`, 400);
+  return j && Array.isArray(j.notes) ? j.notes.map((n) => ({ he: String(n.he || '').slice(0, 200), en: String(n.en || '').slice(0, 200) })) : null;
+}
+
+module.exports = { helpReply, helpBrief, lbReply, judgePatient, summarizeFeedback, historySummary, podiumNotes, aiEnabled: () => !!API_KEY };

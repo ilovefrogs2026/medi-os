@@ -168,8 +168,8 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓',
   ok(true, 'manager kicked player mid-game');
 
   ok((await host.req('game:end', {})).ok, 'host ends game');
-  const over = await a.wait((m) => m.t === 'gameover');
-  ok(over.board.length === 2, 'final board sent to everyone');
+  const over = await a.wait((m) => m.t === 'room' && m.d.phase === 'over');
+  ok(over.end && over.end.stage === 'feedback', 'everyone moves to Polls & Feedback');
   ok((await host.req('game:lobby', {})).ok, 'back to lobby');
 
   console.log(`\nAll ${passed} checks passed.`);

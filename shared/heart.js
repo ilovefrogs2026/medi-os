@@ -14,7 +14,8 @@
       id: 'h_rosa', avatar: '👵', rarity: 'common', weight: 23, reward: 120, kind: 'heart', topic: 'prevention',
       name: { he: 'סבתא רוזה', en: 'Grandma Rosa' },
       bio: { he: 'בת 78, מבשלת לכל השכונה ורוצה לחיות עד 120.', en: '78, cooks for the whole street and plans to reach 120.' },
-      hello: { he: 'שלום חמוד! הרופא אמר לי לשמור על כלי הדם, אבל אני לא מבינה מה לאכול…', en: 'Hello sweetie! The doctor told me to look after my blood vessels, but what should I eat…?' },
+      hello: { he: 'שלום. יש לי לחץ דם גבולי וכולסטרול גבוה, והרופא אמר לי לשנות את התזונה כדי לשמור על כלי הדם.', en: 'Hello. I have borderline blood pressure and high cholesterol, and my doctor told me to change my diet to protect my blood vessels.' },
+      card: { age: { he: '78', en: '78' }, job: { he: 'גמלאית, מבשלת לכל השכונה', en: 'Retired, cooks for the whole street' }, history: { he: 'לחץ דם גבולי, כולסטרול LDL גבוה, תזונה עתירת מלח', en: 'Borderline blood pressure, high LDL cholesterol, high-salt diet' } },
       scenarios: [
         S({ he: 'בת 78. לחץ דם גבולי. אוכלת הרבה מאכלים מלוחים ומטוגנים.', en: '78. Borderline blood pressure. Eats a lot of salty and fried food.' },
           { he: 'מה הכי כדאי לסבתא רוזה לשנות בתזונה כדי לשמור על כלי הדם?', en: 'What should Grandma Rosa change in her diet to protect her blood vessels?' },
@@ -46,7 +47,8 @@
       id: 'h_shimon', avatar: '📮', rarity: 'common', weight: 18, reward: 140, kind: 'heart', topic: 'prevention',
       name: { he: 'הדוור שמעון', en: 'Shimon the Postman' },
       bio: { he: '30 שנה מחלק דואר. מאז שקיבל קטנוע — כבר לא הולך ברגל.', en: '30 years of delivering mail. Since he got a scooter, he never walks.' },
-      hello: { he: 'שלום, כאן שמעון מהדואר. אמרו לי שהעורקים שלי "מתקשים". מה זה אומר?!', en: 'Hi, Shimon from the post office. They say my arteries are "stiffening". What does that mean?!' },
+      hello: { he: 'שלום. אני כמעט לא עושה פעילות גופנית, והרופא אמר שהעורקים שלי פחות גמישים.', en: 'Hello. I hardly exercise, and my doctor said my arteries are less flexible.' },
+      card: { age: { he: '55', en: '55' }, job: { he: 'דוור', en: 'Postman' }, history: { he: 'אורח חיים יושבני, דופק במנוחה גבוה, עודף משקל קל', en: 'Sedentary lifestyle, high resting pulse, slightly overweight' } },
       scenarios: [
         S({ he: 'בן 55, לא עושה פעילות גופנית, עורקים פחות גמישים.', en: '55, no exercise, arteries less flexible.' },
           { he: 'כמה פעילות אירובית מומלצת למבוגר בשבוע?', en: 'How much aerobic activity is recommended for an adult per week?' },
@@ -78,7 +80,8 @@
       id: 'h_yankel', avatar: '🎣', rarity: 'uncommon', weight: 14, reward: 170, kind: 'heart', topic: 'prevention',
       name: { he: 'הדייג יאנקל', en: 'Yankel the Fisherman' },
       bio: { he: 'דג בכנרת מגיל 9. את הדגים הוא מוכר — ואוכל בעיקר נקניקיות.', en: 'Fishing the Sea of Galilee since age 9. Sells the fish, eats mostly sausages.' },
-      hello: { he: 'אהלן! אומרים שהדגים שלי טובים ללב. נו, אז למה?', en: 'Ahoy! They say my fish are good for the heart. Well, why?' },
+      hello: { he: 'שלום. בבדיקות הדם יצאו לי טריגליצרידים גבוהים וסימני דלקת.', en: 'Hello. My blood tests showed high triglycerides and signs of inflammation.' },
+      card: { age: { he: '63', en: '63' }, job: { he: 'דייג', en: 'Fisherman' }, history: { he: 'טריגליצרידים גבוהים, סימני דלקת, עישון בעבר', en: 'High triglycerides, signs of inflammation, former smoker' } },
       scenarios: [
         S({ he: 'סימני דלקת בבדיקות דם, טריגליצרידים גבוהים.', en: 'Signs of inflammation in blood tests, high triglycerides.' },
           { he: 'איך אומגה 3 מדגים שמנים עוזרת לכלי הדם?', en: 'How does omega-3 from oily fish help blood vessels?' },
@@ -110,7 +113,8 @@
       id: 'h_gadi', avatar: '🔧', rarity: 'uncommon', weight: 10, reward: 200, kind: 'heart', topic: 'athero',
       name: { he: 'המכונאי גדי', en: 'Gadi the Mechanic' },
       bio: { he: 'מבין בצינורות של מכוניות. בצינורות של הגוף — פחות.', en: 'Knows all about car pipes. Body pipes — not so much.' },
-      hello: { he: 'שלום, גדי מהמוסך. הרופא אמר שיש לי "טרשת עורקים". זה כמו חלודה בצינור?', en: 'Hi, Gadi from the garage. The doctor says I have "atherosclerosis". Is that like rust in a pipe?' },
+      hello: { he: 'שלום. אובחנה אצלי היצרות עורקים ואני צריך הסבר והנחיות.', en: 'Hello. I was diagnosed with narrowed arteries and I need an explanation and guidance.' },
+      card: { age: { he: '60', en: '60' }, job: { he: 'מכונאי רכב', en: 'Car mechanic' }, history: { he: 'עישון כבד, כולסטרול גבוה, היצרות עורקים', en: 'Heavy smoking, high cholesterol, narrowed arteries' } },
       scenarios: [
         S({ he: 'בן 60, מעשן, כולסטרול גבוה. אובחנה היצרות עורקים.', en: '60, smoker, high cholesterol. Narrowed arteries diagnosed.' },
           { he: 'מהי טרשת עורקים וכיצד היא נוצרת?', en: 'What is atherosclerosis and how does it form?' },
@@ -142,7 +146,8 @@
       id: 'h_betty', avatar: '🥐', rarity: 'rare', weight: 8, reward: 260, kind: 'heart', topic: 'pressure',
       name: { he: 'האופה בטי', en: 'Betty the Baker' },
       bio: { he: 'קמה כל יום ב-3:00 לאפות. ישנה 4 שעות ותמיד בלחץ.', en: 'Up at 3am every day to bake. Sleeps 4 hours and is always stressed.' },
-      hello: { he: 'הלו?! אני באמצע הבצק! הלב שלי דופק חזק ומודדים לי לחץ דם גבוה…', en: 'Hello?! I\'m in the middle of the dough! My heart is pounding and my blood pressure is high…' },
+      hello: { he: 'שלום. מדדו לי לחץ דם גבוה, ואני במתח רב וישנה מעט.', en: 'Hello. My blood pressure was measured high, and I\'m very stressed and sleep little.' },
+      card: { age: { he: '47', en: '47' }, job: { he: 'אופה', en: 'Baker' }, history: { he: 'לחץ דם גבוה (155/95), מתח נפשי, מיעוט שינה, צריכת מלח גבוהה', en: 'High blood pressure (155/95), stress, little sleep, high salt intake' } },
       scenarios: [
         S({ he: 'לחץ דם 155/95 בשלוש מדידות. מתח רב בעבודה.', en: 'Blood pressure 155/95 in three readings. Lots of work stress.' },
           { he: 'למה לחץ דם גבוה לאורך זמן מסוכן ללב ולכלי הדם?', en: 'Why is high blood pressure over time dangerous for the heart and blood vessels?' },
@@ -196,7 +201,8 @@
       id: 'h_ant', avatar: '🐜', rarity: 'special', weight: 6, reward: 900, kind: 'heart', topic: 'prevention', booster: true,
       name: { he: 'אבא נמלה', en: 'Daddy Ant' },
       bio: { he: 'אבא ל-40,000 ילדים. רוצה שכולם יגדלו בריאים.', en: 'Father of 40,000. Wants them all to grow up healthy.' },
-      hello: { he: 'שלום! אבא נמלה כאן. אני רוצה ללמד את הילדים שלי לשמור על הלב — ויש לי פרס גדול למי שיעזור!', en: 'Hello! Daddy Ant here. I want to teach my kids to look after their hearts — and I have a big prize for whoever helps!' },
+      hello: { he: 'שלום. אני רוצה ללמד את המושבה שלי איך לשמור על הלב ולמנוע מחלות.', en: 'Hello. I want to teach my colony how to look after the heart and prevent disease.' },
+      card: { age: { he: '3 חודשים', en: '3 months' }, job: { he: 'אבא ל-40,000 נמלים', en: 'Father of 40,000 ants' }, history: { he: 'ללא מחלות. רוצה ללמוד מניעה', en: 'No illnesses. Wants to learn prevention' } },
       scenarios: [
         S({ he: 'רוצה רשימת הרגלים בריאים למושבה.', en: 'Wants a list of healthy habits for the colony.' },
           { he: 'מה מהבאים הכי מסוכן לכלי הדם ושווה להימנע ממנו?', en: 'Which of these is most harmful to blood vessels and worth avoiding?' },
@@ -220,7 +226,8 @@
       id: 'h_whale', avatar: '🐋', rarity: 'special', weight: 5, reward: 1800, kind: 'heart', topic: 'attack', booster: true,
       name: { he: 'אמא לוויתן', en: 'Mama Whale' },
       bio: { he: 'הלב שלה שוקל 180 ק"ג. היא יודעת כמה הוא חשוב.', en: 'Her heart weighs 180 kg. She knows how much it matters.' },
-      hello: { he: 'ווווּם… אמא לוויתן כאן. בעלי מרגיש לחץ בחזה! תעזור לי לזהות מה קורה — והאוצר שלי שלך.', en: 'Wooom… Mama Whale here. My husband feels pressure in his chest! Help me understand what\'s happening — and my treasure is yours.' },
+      hello: { he: 'שלום. בעלי לא מרגיש טוב, יש לו בעיה בלב ואני צריכה עזרה דחופה.', en: 'Hello. My husband isn\'t well, he has a heart problem and I need urgent help.' },
+      card: { age: { he: '85', en: '85' }, job: { he: 'אמא ומנהלת אוקיינוס', en: 'Mother and ocean manager' }, history: { he: 'הבעל: לחץ דם גבוה, עישון בעבר', en: 'Husband: high blood pressure, former smoker' } },
       scenarios: [
         S({ he: 'בעל בן 60: לחץ חזק בחזה שמקרין ליד שמאל וללסת, זיעה קרה, קוצר נשימה. בהכרה.', en: 'Husband, 60: heavy chest pressure spreading to the left arm and jaw, cold sweat, short of breath. Conscious.' },
           { he: 'מה כנראה קורה ומה עושים עכשיו?', en: 'What is probably happening and what do you do now?' },
@@ -248,7 +255,8 @@
       id: 'h_ducky', avatar: '🦆', rarity: 'epic', weight: 70, reward: 1200, kind: 'heart', topic: 'athero',
       name: { he: 'Mr_Ducky', en: 'Mr_Ducky' },
       bio: { he: 'ברווז קוביות שבונה בתי חולים מבלוקים.', en: 'A blocky duck who builds hospitals out of blocks.' },
-      hello: { he: 'קוואק! ברוך הבא לעולם הקוביות! הכפריים כאן אוכלים רק עוגות…', en: 'Quack! Welcome to the block world! The villagers here only eat cake…' },
+      hello: { he: 'שלום. הכפריים בעולם הקוביות לא שומרים על הלב ואני צריך עצה.', en: 'Hello. The villagers in the block world don\'t look after their hearts and I need advice.' },
+      card: { age: { he: '3', en: '3' }, job: { he: 'להיות נוב', en: 'Being a noob' }, history: { he: 'יותר מדי נוב', en: 'Way too much noob' } },
       scenarios: [
         S({ he: 'כפריים אוכלים רק עוגות וצלעות מטוגנות, ולא זזים מהכפר.', en: 'Villagers eat only cake and fried pork chops and never leave the village.' },
           { he: 'איזה הרגל יעזור לכפריים למנוע טרשת עורקים?', en: 'Which habit will help the villagers prevent atherosclerosis?' },
@@ -272,7 +280,8 @@
       id: 'h_shaked', avatar: '🐶', rarity: 'legendary', weight: 30, reward: 2200, kind: 'heart', topic: 'attack',
       name: { he: 'שקד הכלבלב', en: 'Shaked the Puppy' },
       bio: { he: 'כלבלב קוביות נאמן. נובח פעמיים כשמישהו צריך עזרה.', en: 'A loyal block puppy. Barks twice when someone needs help.' },
-      hello: { he: 'הב! הב! הבעלים שלי נפל ליד המכרה! תעזור לי!', en: 'Woof! Woof! My owner fell down near the mine! Help me!' },
+      hello: { he: 'הב! הבעלים שלי לא מרגיש טוב ליד המכרה, צריך עזרה.', en: 'Woof! My owner isn\'t well near the mine, we need help.' },
+      card: { age: { he: '3', en: '3' }, job: { he: 'להיות נוב', en: 'Being a noob' }, history: { he: 'יותר מדי נוב', en: 'Way too much noob' } },
       scenarios: [
         S({ he: 'הבעלים לא מגיב ולא נושם כרגיל.', en: 'The owner isn\'t responding and isn\'t breathing normally.' },
           { he: 'מה עושים מיד?', en: 'What do you do right away?' },
@@ -300,7 +309,8 @@
       id: 'h_tzvi', avatar: '🐢', rarity: 'rare', weight: 40, reward: 2000, kind: 'heart', topic: 'athero',
       name: { he: 'דוד צבי', en: 'Uncle Tzvi' },
       bio: { he: 'צב בן 212 וחוקר עורקים. העורקים שלו גמישים כמו של בן 20.', en: 'A 212-year-old turtle and artery researcher. His arteries are as flexible as a 20-year-old\'s.' },
-      hello: { he: 'שָׁלוֹם… יַלְדִּי… יֵשׁ לִי… שְׁאֵלַת מֶחְקָר…', en: 'Hel…lo… my child… I have… a research question…' },
+      hello: { he: 'שלום. יש לי שאלת מחקר על פלאק בעורקים.', en: 'Hello. I have a research question about plaque in the arteries.' },
+      card: { age: { he: 'חיים אינסופיים', en: 'Infinite life' }, job: { he: 'מציל את גלקסיית ג\'ורג\'', en: 'Saving the George Galaxy' }, history: { he: 'יכול להשמיד אנשים עם אפצ\'י', en: 'Can destroy people with one sneeze' } },
       scenarios: [
         S({ he: 'שאלת מחקר: מה גורם לפלאק להפוך מסוכן פתאום.', en: 'Research question: what makes plaque suddenly dangerous.' },
           { he: 'למה פלאק בעורק כלילי עלול לגרום להתקף לב פתאומי גם כשההיצרות קטנה?', en: 'Why can plaque in a coronary artery cause a sudden heart attack even when the narrowing is small?' },
@@ -316,7 +326,8 @@
       id: 'h_elephant', avatar: '🐘', rarity: 'epic', weight: 35, reward: 3000, kind: 'heart', topic: 'pressure',
       name: { he: 'אח סטרוברי אלפנט', en: 'Brother Strawberry Elephant' },
       bio: { he: 'פיל בטעם תות ופרופסור לכלי דם.', en: 'A strawberry-flavoured elephant and professor of blood vessels.' },
-      hello: { he: 'טרררום! 🍓 אחי! שאלה מהמעבדה הוורודה שלי!', en: 'TRRRUMP! 🍓 Bro! A question from my pink lab!' },
+      hello: { he: 'שלום. יש לי שאלת מחקר על איך מתחילה טרשת עורקים.', en: 'Hello. I have a research question about how atherosclerosis begins.' },
+      card: { age: { he: 'חיים אינסופיים', en: 'Infinite life' }, job: { he: 'מציל את גלקסיית ג\'ורג\'', en: 'Saving the George Galaxy' }, history: { he: 'יכול להשמיד אנשים עם אפצ\'י', en: 'Can destroy people with one sneeze' } },
       scenarios: [
         S({ he: 'שאלת מחקר על הדופן הפנימית של העורק.', en: 'Research question about the inner lining of the artery.' },
           { he: 'איך עישון ולחץ דם גבוה מתחילים את תהליך טרשת העורקים?', en: 'How do smoking and high blood pressure start the process of atherosclerosis?' },
@@ -332,7 +343,8 @@
       id: 'h_legend', avatar: '🤴', rarity: 'legendary', weight: 25, reward: 5000, kind: 'heart', topic: 'attack',
       name: { he: "ג'ורג' האגדי", en: 'Legendary George' },
       bio: { he: 'סוף סוף בלי צללית. עם כתר. אגדה.', en: 'At last, no shadow. With a crown. A legend.' },
-      hello: { he: 'ובכן… הגעת אליי. מעטים עונים נכון על השאלה שלי.', en: 'Well… you reached me. Few answer my question correctly.' },
+      hello: { he: 'שלום. יש לי שאלת מחקר על התקף לב.', en: 'Hello. I have a research question about heart attacks.' },
+      card: { age: { he: 'חיים אינסופיים', en: 'Infinite life' }, job: { he: 'מציל את גלקסיית ג\'ורג\'', en: 'Saving the George Galaxy' }, history: { he: 'יכול להשמיד אנשים עם אפצ\'י', en: 'Can destroy people with one sneeze' } },
       scenarios: [
         S({ he: 'שאלת המחקר הגדולה של הכוכב.', en: 'The planet\'s great research question.' },
           { he: 'למה בהתקף לב אומרים "זמן הוא שריר"?', en: 'Why do they say "time is muscle" in a heart attack?' },
@@ -380,6 +392,27 @@
     }
   ];
 
+  // Ready-made messages the player can send (or they write their own)
+  const PRESETS = [
+    { id: 'greet1', task: 'greet', he: 'שלום, איך אני יכול לעזור לך?', en: 'Hello, how can I help you?' },
+    { id: 'greet2', task: 'greet', he: 'שלום, כאן מד"א. מה קרה?', en: 'Hello, this is MDA. What happened?' },
+    { id: 'fund1', task: 'fund', he: 'מה מספר קופת החולים שלך?', en: 'What is your health-fund number?' },
+    { id: 'fund2', task: 'fund', he: 'אפשר בבקשה את מספר קופת החולים כדי לבדוק את התיק?', en: 'Could I have your health-fund number to check your file?' }
+  ];
+  // Tasks tracked during a call
+  const TASKS = [
+    { id: 'greet', he: 'לברך את המטופל או לשאול איך אפשר לעזור', en: 'Greet the patient or ask how you can help' },
+    { id: 'fund', he: 'לבקש את מספר קופת החולים של המטופל', en: 'Ask for the patient\'s health-fund number' }
+  ];
+  const GREET_WORDS = ['שלום', 'היי', 'הי ', 'אהלן', 'בוקר טוב', 'ערב טוב', 'צהריים טובים', 'מה שלומ', 'איך אפשר לעזור', 'איך אני יכול לעזור', 'איך אוכל לעזור', 'במה אפשר לעזור', 'במה אוכל לעזור', 'מה קרה', 'כאן מד"א', 'מד"א',
+    'hello', 'hi ', 'hey', 'good morning', 'good evening', 'good afternoon', 'how can i help', 'how may i help', 'what happened', 'this is mda'];
+  const FUND_WORDS = ['קופת חולים', 'קופת', 'קופה', 'מספר קופ', 'health fund', 'health-fund', 'fund number', 'insurance'];
+  const PATIENT_LINES = {
+    fund: { he: 'בטח. מספר קופת החולים שלי הוא {n}.', en: 'Sure. My health-fund number is {n}.' },
+    offer: { he: 'אפשר לבדוק את התיק שלי. אני יכול לתת את מספר קופת החולים.', en: 'You can check my file. I can give you my health-fund number.' },
+    waiting: { he: 'בדקת את התיק שלי באפליקציית מד"א?', en: 'Have you checked my file in the MDA app?' }
+  };
+
   const MODES = ['mixed', 'heart', 'classic'];
 
   // The developer's rules for the AI patient (used only when an AI key is set)
@@ -390,7 +423,7 @@ Strict rules:
 - The player succeeds only if they: saved the patient, helped them take the right medication, or gave accurate medical/preventive guidance for the problem asked.
 - Keep replies to 1-3 short sentences, in the player's language.`;
 
-  const HEART = { CAST, MINECRAFT, PLANET, INFO, MODES, AI_RULES };
+  const HEART = { CAST, MINECRAFT, PLANET, INFO, MODES, AI_RULES, PRESETS, TASKS, GREET_WORDS, FUND_WORDS, PATIENT_LINES };
   if (typeof module !== 'undefined' && module.exports) module.exports = HEART;
   else root.HEART = HEART;
 })(typeof window !== 'undefined' ? window : globalThis);
