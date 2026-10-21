@@ -20,8 +20,8 @@
   const S = {
     view: null, homeMode: null, homeErr: '', online: false, room: null, me: null, prevPhase: null,
     chat: { global: [], help: [], lb: [] }, tickets: [], ticketMsgs: {}, chan: 'global', ticketOpen: null,
-    unread: { global: 0, help: 0, lb: 0 }, showMembers: false,
-    call: null, callsTab: 'call', mdaTab: 'file', mdaFile: null, launching: false, pollsOpen: false, endKey: '', ringing: false, tasksOpenedFor: null, typedFor: null, renderedKey: '',
+    unread: { global: 0, help: 0, lb: 0, dm: 0, notes: 0 }, showMembers: false,
+    call: null, callsTab: 'call', mdaTab: 'file', mdaFile: null, launching: false, pollsOpen: false, endKey: '', ringing: false, tasksOpenedFor: null, notes: [], notesSeen: 0, dms: {}, dmOpen: null, helpStarting: false, typedFor: null, renderedKey: '',
     wins: {}, z: 10, gameover: null, kicked: false, booting: false,
     discovered: new Set(store.get('medios.discovered', [])), lastMoney: 0
   };
@@ -104,9 +104,7 @@
           ${durs.map((d) => `<button type="button" role="radio" aria-checked="${homeDraft.duration === d}" class="chip ${homeDraft.duration === d ? 'on' : ''}" data-dur="${d}"><span class="mono">${d}</span> ${t('minutes')}</button>`).join('')}
           <button type="button" role="radio" aria-checked="${homeDraft.duration === 'custom'}" class="chip ${homeDraft.duration === 'custom' ? 'on' : ''}" data-dur="custom">${t('custom')}</button>
         </div></div>
-        ${HT.CAST.length ? `<div class="field"><label>${t('game_mode')}</label><div class="chips" role="radiogroup">
-          ${HT.MODES.map((m) => `<button type="button" role="radio" aria-checked="${homeDraft.mode === m}" class="chip ${homeDraft.mode === m ? 'on' : ''}" data-gmode="${m}">${t('mode_' + m)}</button>`).join('')}
-        </div><div class="dim" style="font-size:.8rem">${t('mode_' + homeDraft.mode + '_d')}</div></div>` : ''}
+        <div class="field"><label>${t('game_mode')}</label><div class="mode-fixed">❤ ${t('mode_heart')}</div><div class="dim" style="font-size:.8rem">${t('mode_heart_only_d')}</div></div>
         <div class="field ${homeDraft.duration === 'custom' ? '' : 'hidden'}" id="custom-wrap"><input class="input" id="c-custom" type="number" min="1" max="120" inputmode="numeric" placeholder="${t('custom_ph')}" value="${esc(homeDraft.custom)}"></div>
         <div class="err" id="h-err">${esc(S.homeErr)}</div>
         <div style="display:flex;gap:.5rem;justify-content:space-between"><button type="button" class="btn ghost" data-mode="">${t('back')}</button><button class="btn primary big" type="submit">${t('create_btn')}</button></div>
@@ -400,6 +398,8 @@
     if (S.view !== 'desktop') return;
     const ringing = S.call && S.call.status === 'ringing';
     $$('.dicon[data-app=calls], .task[data-task=calls]').forEach((el) => el.classList.toggle('ringing', !!ringing));
+    const limMap = { calls: 'calls', mda: 'mda', chat: 'chat' };
+    $$('.dicon').forEach((el) => { const ab = limMap[el.dataset.app]; el.classList.toggle('limited', !!(ab && limitUntil(ab))); });
     let n = S.unread.global + S.unread.help + S.unread.lb;
     if (S.me?.isAdmin) n += S.tickets.filter((x) => !x.adminId).length;
     $$('.dicon[data-app=chat] .pip, .task[data-task=chat] .tpip').forEach((pip) => { pip.textContent = n > 99 ? '99+' : n; pip.classList.toggle('hidden', !n); });
@@ -419,7 +419,9 @@
     const tabs = [['file', t('mda_tab_file')], ['heart', t('mda_tab_heart')], ['first', t('mda_tab_first')]];
     if (!HT.CAST.length) S.mdaTab = 'first';
     let inner = '';
-    if (S.mdaTab === 'file') {
+    if (S.mdaTab === 'file' && limitUntil('mda')) {
+      inner = `<div class="muted-note" style="border-radius:10px">⛔ ${limitText(limitUntil('mda'))}</div>`;
+    } else if (S.mdaTab === 'file') {
       const c = S.call; const ch = charOf(c);
       const live = c && c.kind === 'heart' && c.status === 'active';
       const hint = !live ? t('file_no_patient') : c.stage === 'talk' ? t('file_ask_first', { name: tc(ch.name) }) : c.stage === 'fund' ? t('file_type_number', { name: tc(ch.name) }) : t('file_opened');
@@ -430,10 +432,10 @@
           <div class="dim" style="font-size:.85rem">${esc(hint)}</div><div class="err" id="file-err"></div>
         </form>
         ${f ? `<article class="file-card">
-          <header><span class="fa">${f.avatar}</span><div><b>${esc(tc(f.name))}</b><div class="mono dim">${t('fund_number')}: ${esc(f.fund)}</div></div><span class="badge admin">${t('file_badge')}</span></header>
+          <header><span class="fa">${Voxel.html(f.charId, { size: 56, mood: 'worried' })}</span><div><b>${esc(tc(f.name))}</b><div class="mono dim">${t('fund_number')}: ${esc(f.fund)}</div></div><span class="badge admin">${t('file_badge')}</span></header>
           ${f.card ? `<dl class="card-grid"><dt>${t('card_age')}</dt><dd>${esc(tc(f.card.age))}</dd><dt>${t('card_job')}</dt><dd>${esc(tc(f.card.job))}</dd><dt>${t('card_history')}</dt><dd>${esc(tc(f.card.history))}</dd></dl>` : ''}
-          <h4>${t('file_complaint')}</h4><p>${esc(tc(f.text))}</p>
-          <h4>${t('file_question')}</h4><p class="file-q">${esc(tc(f.q))}</p>
+          <h4>${t('file_problem')}</h4><p class="file-q">${esc(tc(f.text))}</p>
+          ${f.goal ? `<h4>${t('file_task')}</h4><p>${esc(tc(f.goal))}</p>` : ''}
           ${live && c.stage === 'file' ? `<button class="btn info" data-back-call>☎ ${t('back_to_call')}</button>` : ''}
         </article>` : ''}`;
     } else if (S.mdaTab === 'heart') {
@@ -460,7 +462,12 @@
 
   // ───────────────────────── Tasks app ─────────────────────────
   function tasksHtml(c) {
-    return HT.TASKS.map((tk) => { const done = !!(c && c.tasks && c.tasks[tk.id]); return `<li class="task-item ${done ? 'done' : ''}"><span class="tbox">${done ? '✔' : ''}</span><span>${esc(tc(tk))}</span></li>`; }).join('');
+    return HT.TASKS.map((tk) => {
+      const done = !!(c && c.tasks && c.tasks[tk.id]);
+      const text = tk.id === 'goal' ? (c && c.goal ? tc(c.goal) : t('task_goal_wait')) : tc(tk);
+      const prog = tk.id === 'goal' && c && c.need > 1 && !done ? `<span class="tprog">${Array.from({ length: c.need }, (_, i) => `<i class="${i < c.progress ? 'on' : ''}"></i>`).join('')}</span>` : '';
+      return `<li class="task-item ${done ? 'done' : ''} ${tk.id === 'file' ? 'tip' : ''} ${tk.id === 'goal' ? 'goal' : ''}"><span class="tbox">${done ? '✔' : ''}</span><span>${esc(text)}</span>${prog}</li>`;
+    }).join('');
   }
   function renderTasks(body) {
     if (!body) { const w = S.wins.tasks; if (!w || !w.el) return; body = w.body; }
@@ -502,6 +509,15 @@
     <text x="65" y="56" text-anchor="middle" font-size="30" fill="#8a96ff" opacity=".6" font-family="VT323">?</text></svg>`;
 
   function charOf(call) { return call ? ALL_CHARS[call.charId] : null; }
+  // Facial expression for the caller: talking right after a new line, happy/sad at the end, worried while the problem is open
+  function moodOf(c) {
+    if (!c) return 'idle';
+    if (c.status === 'done') return c.result && (c.result.correct || c.result.kind === 'boost' || c.result.kind === 'planet') ? 'happy' : 'sad';
+    if (S.talkUntil && Date.now() < S.talkUntil && S.talkFor === c.id) return 'talk';
+    if (isTalker(c)) return 'talk';
+    if (c.kind === 'heart') return c.noProgressShown ? 'worried' : c.stage === 'file' ? 'worried' : 'idle';
+    return 'idle';
+  }
   function rc(ch) { return (CT.RARITY[ch.rarity] || CT.RARITY.common).color; }
   function rarityTag(ch) { const r = CT.RARITY[ch.rarity]; return `<span class="rarity">${esc(tc(r))}</span>`; }
   function elapsed(call) { return call && call.pickedAt ? Net.serverNow() - call.pickedAt : 0; }
@@ -559,10 +575,9 @@
     const isMC = isNoob || c.world === 'minecraft';
     stage.className = 'call-stage' + (isG ? ' george-stage' : '') + (isP ? ' planet-stage' : '') + (isMC ? ' mc-stage' : '');
     const avatar = (ring) => {
-      if (isG && ring) return `<div class="avatar ring" style="--rc:#6a7bff;background:#05060d"><div class="silhouette" style="width:70px;height:82px">${GEORGE_SVG}</div></div>`;
-      if (isG) return `<div class="silhouette">${GEORGE_SVG}</div>`;
+      const vid = c.kind === 'george' ? 'h_george' : ch.id;
       const crown = ch.id === 'legendary_george' || ch.id === 'h_legend';
-      return `<div class="avatar ${ring ? 'ring' : ''} ${crown ? 'crowned' : ''}" style="--rc:${rc(ch)}">${crown ? '<span class="legend-rays"></span><span class="crown">👑</span>' : ''}${ch.id === 'strawberry_elephant' || ch.id === 'h_elephant' ? '🐘<span style="position:absolute;bottom:4px;inset-inline-end:2px;font-size:1.6rem">🍓</span>' : ch.avatar}</div>`;
+      return `<div class="avatar vox-holder ${ring ? 'ring' : ''} ${crown ? 'crowned' : ''}" style="--rc:${isG || isNoob ? '#6a7bff' : rc(ch)};${isG ? 'background:#05060d' : ''}">${crown ? '<span class="legend-rays"></span>' : ''}${Voxel.html(vid, { mood: ring ? 'ring' : moodOf(c), size: 112 })}</div>`;
     };
     const head = (ring) => `<div class="caller" style="--rc:${isG ? '#8a96ff' : rc(ch)}">
       ${isP ? `<div class="planet-tag">🪐 ${t('planet')}</div>` : ''}${c.world === 'minecraft' ? `<div class="planet-tag mc-tag">▦ ${t('mc_world')}</div>` : ''}
@@ -673,23 +688,16 @@
       return;
     }
     html += `<ul class="task-list inline">${tasksHtml(c)}</ul>`;
+    const lim = limitUntil('calls');
+    if (lim) { stage.innerHTML = html + `<div class="muted-note">⛔ ${limitText(lim)}</div>`; return; }
     html += `<div class="talk">${c.talk.length ? c.talk.map(talkLine).join('') : `<div class="dim talk-empty">${t('you_write_first')}</div>`}</div>`;
-    if (c.stage !== 'file') {
-      const presets = HT.PRESETS.filter((pr) => !(c.tasks[pr.task]) || pr.task === 'fund' && c.stage === 'talk');
-      html += `<div class="presets talk-presets">${presets.map((pr) => `<button class="preset" data-pr="${pr.id}">${esc(tc(pr))}</button>`).join('')}</div>
-        <form class="composer" id="h-say" style="border:none;padding:6px 0 0;width:100%;max-width:560px"><input class="input" id="h-say-in" maxlength="300" placeholder="${t('say_ph')}" autocomplete="off"><button class="btn primary">${t('send')}</button></form>`;
-      if (c.stage === 'fund') html += `<div class="fund-box"><span>${t('fund_number')}:</span> <b class="mono fund-no">${esc(c.fund)}</b></div>
-        <div class="step-hint">① ${t('step_open_mda')}<br>② ${t('step_type_number')}</div>
+    if (c.stage === 'file') html += `<div class="file-mini"><b>📁 ${t('file_problem')}:</b> ${esc(tc(c.file))}</div>`;
+    const presets = c.stage === 'file' ? [] : HT.PRESETS.filter((pr) => !c.tasks[pr.task]);
+    html += `${presets.length ? `<div class="presets talk-presets">${presets.map((pr) => `<button class="preset" data-pr="${pr.id}">${esc(tc(pr))}</button>`).join('')}</div>` : ''}
+      <form class="composer" id="h-say" style="border:none;padding:6px 0 0;width:100%;max-width:560px"><input class="input" id="h-say-in" maxlength="300" placeholder="${c.stage === 'file' ? t('guide_ph') : t('say_ph')}" autocomplete="off"><button class="btn primary">${t('send')}</button></form>`;
+    if (c.stage === 'fund') html += `<div class="fund-box"><span>${t('fund_number')}:</span> <b class="mono fund-no">${esc(c.fund)}</b></div>
         <button class="btn info big" id="h-mda">✚ ${t('open_mda_file')}</button>`;
-    } else {
-      html += `<div class="file-mini"><b>📁 ${t('file_complaint')}:</b> ${esc(tc(c.file))}</div>
-        <div class="file-q">${esc(tc(c.q))}</div>
-        ${c.reply ? `<div class="line patient-reply">💬 ${esc(tc(c.reply))}</div>` : ''}
-        <div class="options">${c.choices.map((o) => `<button class="opt ${c.removed.includes(o.i) ? 'bad' : ''}" data-o="${o.i}" ${c.removed.includes(o.i) ? 'disabled' : ''}><span>${esc(tc(o.t))}</span></button>`).join('')}</div>
-        <div class="dim" style="font-size:.8rem;margin-top:6px">${t('tries_left', { n: Math.max(0, c.maxTries - c.tries) })} · ${t('reward')}: ${money(ch.reward)}</div>
-        ${c.aiOn ? `<div class="ai-chat">${(c.chat || []).map((m) => `<div class="line ${m.who === 'player' ? 'me-line' : 'patient-reply'}">${m.who === 'player' ? '🧑‍⚕️' : '💬'} ${esc(m.text)}</div>`).join('')}
-          <form class="composer" id="h-free" style="border:none;padding:6px 0 0"><input class="input" id="h-text" maxlength="400" placeholder="${t('free_ph')}" autocomplete="off"><button class="btn primary">${t('send')}</button></form></div>` : ''}`;
-    }
+    if (c.stage === 'file') html += `<div class="dim" style="font-size:.8rem;margin-top:4px">${t('patience_left', { n: Math.max(0, c.patience) })} · ${t('reward')}: ${money(ch.reward)}</div>`;
     html += `<button class="btn small danger" id="h-hang" style="margin-top:10px">☎ ${t('hang_up')}</button>`;
     stage.innerHTML = html;
     const say = async (payload) => { const r = await Net.request('call:say', { callId: c.id, ...payload }); if (r.error) toastErr(r.error); else sfx('msg'); return r; };
@@ -715,7 +723,7 @@
     };
     const hang = $('#h-hang'); if (hang) hang.onclick = async () => { hang.disabled = true; await Net.request('call:hangup', { callId: c.id }); };
     const talk = $('.talk', stage); if (talk) talk.scrollTop = talk.scrollHeight;
-    if (c.stage !== 'file') stage.scrollTop = stage.scrollHeight;
+    stage.scrollTop = stage.scrollHeight;
   }
   function byIdOk(c) { return c.result && c.result.ok; }
 
@@ -739,14 +747,11 @@
     const card = (ch, odds) => {
       const known = S.discovered.has(ch.id);
       return `<div class="icard ${known ? '' : 'locked'}" style="--rc:${ch.rarity === 'mystery' ? '#8a96ff' : rc(ch)}">
-        <span class="ia">${ch.avatar}</span><span class="in">${esc(tc(ch.name))}</span>
-        <span class="ib">${known ? esc(tc(ch.bio)) : t('locked')}</span>
+        <span class="ia vox-ia">${Voxel.html(ch.id, { size: 64, mood: known ? 'idle' : 'idle' })}</span><span class="in">${esc(tc(ch.name))}</span>
+        <span class="ib">${known ? esc(tc(ch.bio)) : t('locked')}</span>${ch.card ? `<span class="ib">${esc(tc(ch.card.age))} · ${esc(tc(ch.card.job))}</span>` : ch.id === 'h_noob' ? `<span class="ib">3 · ${esc(t('noob_job'))}</span>` : ch.id === 'h_george' ? `<span class="ib">∞ · ${esc(t('george_job'))}</span>` : ''}
         <span class="ic">${t('chance')} ${odds}% · ${ch.reward ? money(ch.reward) : ch.boost ? '+' + money(ch.boost) : ch.world === 'minecraft' ? '▦' : '🪐'}</span></div>`;
     };
     return `<div class="index" style="width:100%">
-      <h3>${t('regular_callers')}</h3><div class="igrid">${CT.REGULARS.map((c) => card(c, c.weight)).join('')}</div>
-      <h3>${t('special_callers')}</h3><div class="igrid">${CT.SPECIALS.map((c) => card(c, c.weight)).join('')}</div>
-      <h3>${t('planet_callers')}</h3><div class="igrid">${CT.PLANET.map((c) => card(c, c.weight)).join('')}</div>
       ${HT.CAST.length ? `<h3>${t('heart_callers')}</h3><div class="igrid">${HT.CAST.map((c) => card(c, c.weight)).join('')}</div>
       <h3>${t('mc_callers')}</h3><div class="igrid">${HT.MINECRAFT.map((c) => card(c, c.weight)).join('')}</div>
       <h3>${t('planet_callers')} · ${t('research')}</h3><div class="igrid">${HT.PLANET.map((c) => card(c, c.weight)).join('')}</div>` : ''}</div>`;
@@ -755,11 +760,15 @@
   function onCall(call) {
     const prev = S.call;
     S.call = call;
+    if (call && call.kind === 'heart' && call.talk && (!prev || prev.id !== call.id || (prev.talk || []).length < call.talk.length) && call.talk.length && call.talk[call.talk.length - 1].who === 'patient') {
+      S.talkUntil = Date.now() + 2400; S.talkFor = call.id;
+      clearTimeout(S.talkTimer); S.talkTimer = setTimeout(() => { if (S.callsTab === 'call') renderStage(null, true); }, 2500);
+    }
     if (call && (!prev || prev.id !== call.id) && call.status === 'ringing') {
       if (!isOpen('calls') || S.focused !== 'calls') { // silent outside the Calls app
 
         const ch = charOf(call);
-        toast(`<span class="ta">${isTalker(call) ? '👤' : ch.avatar}</span><span class="tt"><b>${t('incoming')}</b><br>${isTalker(call) ? t('unknown_caller') : esc(tc(ch.name))}</span><span class="btn small info">${t('open')}</span>`,
+        toast(`<span class="ta">${Voxel.html(call.kind === 'george' ? 'h_george' : call.charId, { size: 40, mood: 'ring' })}</span><span class="tt"><b>${t('incoming')}</b><br>${isTalker(call) ? t('unknown_caller') : esc(tc(ch.name))}</span><span class="btn small info">${t('open')}</span>`,
           { cls: 'call', ms: 6000, onClick: () => openWin('calls') });
       }
     }
@@ -803,14 +812,18 @@
   }
 
   // ───────────────────────── DisChat ─────────────────────────
-  const CHANNELS = [
+  const CHANNELS_ALL = [
     { id: 'help', icon: '?', name: () => t('ch_help'), desc: () => t('ch_help_d') },
     { id: 'lb', icon: '#', name: () => t('ch_lb'), desc: () => t('ch_lb_d') },
-    { id: 'global', icon: '#', name: () => t('ch_global'), desc: () => t('ch_global_d') }
+    { id: 'global', icon: '#', name: () => t('ch_global'), desc: () => t('ch_global_d') },
+    { id: 'dm', icon: '✉', name: () => t('ch_dm'), desc: () => (S.me?.isHost ? t('ch_dm_host_d') : t('ch_dm_d')), show: () => S.me?.isHost || Object.keys(S.dms).length > 0 },
+    { id: 'notes', icon: '!', name: () => t('ch_notes'), desc: () => t('ch_notes_d'), show: () => !!S.me?.isAdmin }
   ];
+  const channels = () => CHANNELS_ALL.filter((c) => !c.show || c.show());
 
   function renderChat(body) {
     if (!body) { const w = S.wins.chat; if (!w || !w.el) return; body = w.body; }
+    if (!channels().some((c) => c.id === S.chan)) S.chan = 'global';
     body.innerHTML = `<div class="dchat ${S.showMembers ? 'with-members' : ''}" id="dchat">
       <aside class="dside"><h4>DisChat · ${esc(S.room?.code)}</h4><div id="chans" style="display:contents"></div></aside>
       <section class="dmain" id="dmain"></section>
@@ -821,12 +834,13 @@
 
   function renderChans() {
     const el = $('#chans'); if (!el) return;
-    el.innerHTML = CHANNELS.map((c) => {
-      let n = S.unread[c.id];
-      if (c.id === 'help' && S.me?.isAdmin) n = S.tickets.filter((x) => !x.adminId).length;
-      return `<button class="chan ${S.chan === c.id ? 'on' : ''}" data-ch="${c.id}"><span class="hash">${c.icon}</span><span class="cn">${esc(c.name())}</span>${n ? `<span class="unread">${n}</span>` : ''}</button>`;
+    el.innerHTML = channels().map((c) => {
+      let n = S.unread[c.id] || 0;
+      if (c.id === 'help' && S.me?.isAdmin) n = S.tickets.filter((x) => x.open && !x.adminId).length;
+      const crit = c.id === 'notes' && S.notes.some((x) => x.severity === 'critical' && x.ts > (S.notesSeen || 0));
+      return `<button class="chan ${S.chan === c.id ? 'on' : ''} ${crit ? 'crit' : ''}" data-ch="${c.id}"><span class="hash">${c.icon}</span><span class="cn">${esc(c.name())}</span>${n ? `<span class="unread">${n}</span>` : ''}</button>`;
     }).join('') + `<button class="chan" data-members style="margin-top:auto"><span class="hash">☺</span><span class="cn">${t('members')} (${S.room?.players.length || 0})</span></button>`;
-    $$('[data-ch]', el).forEach((b) => b.onclick = () => { S.chan = b.dataset.ch; S.unread[S.chan] = 0; S.ticketOpen = null; sfx('click'); renderChans(); renderChatMain(); updateIcons(); });
+    $$('[data-ch]', el).forEach((b) => b.onclick = () => { S.chan = b.dataset.ch; S.unread[S.chan] = 0; S.ticketOpen = null; if (S.chan === 'notes') S.notesSeen = Date.now(); sfx('click'); renderChans(); renderChatMain(); updateIcons(); });
     $('[data-members]', el).onclick = () => { S.showMembers = !S.showMembers; sfx('click'); renderChat(); };
   }
 
@@ -843,13 +857,14 @@
       case 'admin_joined': return t('ev_admin_joined', ev);
       case 'admin_left': return t('ev_admin_left', ev);
       case 'closed': return t('ev_closed', ev);
+      case 'resolved': return t('ev_resolved');
       case 'join': return t('ev_join', ev);
       case 'start': return t('ev_start');
       case 'polls': return t('ev_polls');
       case 'muted': return t('ev_muted', ev);
       case 'unmuted': return t('ev_unmuted', ev);
       case 'kicked': return t('ev_kicked', ev);
-      case 'rare': { const ch = ALL_CHARS[ev.charId]; return t('ev_rare', { player: ev.player, char: `${ch.avatar} ${tc(ch.name)}`, delta: money(ev.delta) }); }
+      case 'rare': { const ch = ALL_CHARS[ev.charId]; return t('ev_rare', { player: ev.player, char: ch ? tc(ch.name) : '', delta: money(ev.delta) }); }
       default: return '';
     }
   }
@@ -863,57 +878,110 @@
     const time = new Date(m.ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     const badge = m.from.role === 'bot' ? `<span class="badge ai">AI</span>` : m.from.role === 'host' ? `<span class="badge host">${t('host')}</span>` : m.from.role === 'admin' ? `<span class="badge admin">${t('admin')}</span>` : '';
     const mine = m.from.id === S.me?.id;
+    const av = m.from.id === 'botgeorge' ? Voxel.html('h_george', { size: 32, mood: 'idle' }) : m.from.role === 'bot' ? '🤖' : esc(m.from.name.slice(0, 1).toUpperCase());
     return `<div class="msg ${m.from.role === 'bot' ? 'bot' : ''} ${mine ? 'mine' : ''}">
-      <span class="mav" style="background:${roleColor(m.from)}">${m.from.role === 'bot' ? '🤖' : esc(m.from.name.slice(0, 1).toUpperCase())}</span>
+      <span class="mav ${m.from.id === 'botgeorge' ? 'vmav' : ''}" style="background:${roleColor(m.from)}">${av}</span>
       <div><div class="mh"><span class="mn" style="color:${mine ? '' : roleColor(m.from)}">${esc(m.from.name)}</span>${badge}<span class="mt">${time}</span></div>
       <div class="mb">${esc(m.text)}</div></div></div>`;
   }
 
+  // ── Notes (anti-cheat alerts) ──
+  function noteHtml(n) {
+    const s2 = n.snapshot || {}; const tm = new Date(n.ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const idle = s2.idleSec >= 60 ? t('idle_min', { n: Math.round(s2.idleSec / 60) }) : t('idle_sec', { n: s2.idleSec || 0 });
+    const lim = Object.entries(s2.limits || {}).filter(([, v]) => v > Net.serverNow()).map(([k]) => t('lim_' + k)).join(', ');
+    const det = n.details ? Object.entries(n.details).map(([k, v]) => `<span class="mono">${esc(k)}: ${esc(v)}</span>`).join(' · ') : '';
+    return `<article class="note sev-${n.severity}" data-note="${n.id}">
+      <header><span class="nsev">${t('sev_' + n.severity)}</span><b>${esc(n.name)}</b>${n.count > 1 ? `<span class="badge flag">×${n.count}</span>` : ''}<span class="mono dim">${tm}</span></header>
+      <p class="ntext">${esc(tc(n.text))}</p>${det ? `<p class="ndet">${det}</p>` : ''}
+      <dl class="nsnap">
+        <dt>${t('snap_now')}</dt><dd>${s2.call ? `☎ ${esc(tc(s2.call.char) || '')} · ${esc(s2.call.stage || s2.call.status)}` : s2.app ? esc(t('app_' + s2.app) || s2.app) : '—'}</dd>
+        <dt>${t('snap_state')}</dt><dd>${money(s2.money)} · #${s2.rank}/${s2.of} · ${s2.stats ? `${s2.stats.correct}/${s2.stats.answered}` : ''}</dd>
+        <dt>${t('snap_active')}</dt><dd>${s2.connected ? (s2.idleSec < 60 ? '🟢 ' + t('active') : '🟡 ' + t('not_active')) : '🔴 ' + t('offline_short')} · ${t('idle_for')} ${idle}</dd>
+        ${lim ? `<dt>${t('snap_limits')}</dt><dd>${esc(lim)}</dd>` : ''}
+      </dl>
+      <div class="macts"><button class="btn small" data-hist="${n.playerId}">📜 ${t('history')}</button>${S.me?.isHost ? `<button class="btn small warn" data-limit="${n.playerId}">⛔ ${t('limit')}</button><button class="btn small info" data-dmto="${n.playerId}">✉ ${t('ch_dm')}</button>` : ''}<button class="btn small danger" data-kick="${n.playerId}">${t('kick')}</button></div>
+    </article>`;
+  }
+
   function renderChatMain() {
     const main = $('#dmain'); if (!main) return;
-    const ch = CHANNELS.find((c) => c.id === S.chan);
+    const ch = channels().find((c) => c.id === S.chan) || CHANNELS_ALL[2];
     const admin = S.me?.isAdmin;
-    let html = `<div class="dhead"><span class="ttl">${ch.icon === '?' ? '❓' : '#'} ${esc(ch.name())}</span><span class="sub">${esc(ch.desc())}</span></div>`;
+    let html = `<div class="dhead"><span class="ttl">${ch.icon === '?' ? '❓' : ch.icon === '!' ? '⚠' : ch.icon === '✉' ? '✉' : '#'} ${esc(ch.name())}</span><span class="sub">${esc(ch.desc())}</span></div>`;
+
+    if (S.chan === 'notes') {
+      const list = [...S.notes].sort((a, b) => (b.severity === 'critical') - (a.severity === 'critical') || b.ts - a.ts);
+      main.innerHTML = html + `<div class="tq notes">${list.length ? list.map(noteHtml).join('') : `<div class="welcome">${t('no_notes')}</div>`}</div>`;
+      bindAdminButtons(main); bindHostButtons(main);
+      $$('[data-kick]', main).forEach((b) => b.onclick = async () => { const r = await Net.request('mod:kick', { targetId: b.dataset.kick }); if (r.error) toastErr(r.error); });
+      return;
+    }
+
+    if (S.chan === 'dm' && S.me?.isHost && !S.dmOpen) {
+      const others = (S.room?.players || []).filter((p) => p.id !== S.me.id && !p.bot);
+      main.innerHTML = html + `<div class="tq">${others.map((p) => `<button class="ticket" data-dmopen="${p.id}"><div class="th"><b>${esc(p.name)}</b>${(S.dms[p.id] || []).length ? `<span class="badge admin">${(S.dms[p.id] || []).length}</span>` : ''}</div><div class="dim" style="font-size:.8rem">${(S.dms[p.id] || []).length ? esc((S.dms[p.id].slice(-1)[0] || {}).text || '') : t('dm_start')}</div></button>`).join('') || `<div class="welcome">${t('no_players')}</div>`}</div>`;
+      $$('[data-dmopen]', main).forEach((b) => b.onclick = () => { S.dmOpen = b.dataset.dmopen; renderChatMain(); });
+      return;
+    }
 
     if (S.chan === 'help' && admin && !S.ticketOpen) {
-      html += `<div class="tq">${S.tickets.length ? S.tickets.map((tk) => `<button class="ticket ${tk.adminId ? 'claimed' : ''}" data-tk="${tk.id}">
-          <div class="th"><b>${esc(tk.playerName)}</b><span class="badge ${tk.adminId ? 'admin' : 'flag'}">${tk.adminId ? `${t('handled_by')} ${esc(tk.adminName)}` : 'NEW'}</span></div>
-          <div class="tsum">“${esc(tk.summary)}”</div>
-          <div class="dim" style="font-size:.78rem">${t('category')}: ${esc(tc(tk.category))}</div></button>`).join('') : `<div class="welcome">${t('no_tickets')}</div>`}</div>`;
+      html += `<div class="tq">${S.tickets.length ? S.tickets.map((tk) => `<button class="ticket ${tk.adminId ? 'claimed' : ''} ${tk.priority && tk.open ? 'prio' : ''} ${!tk.open ? 'done' : ''}" data-tk="${tk.id}">
+          <div class="th"><b>${esc(tk.playerName)}</b>${tk.priority && tk.open ? `<span class="badge flag">⬆ ${t('wants_manager')}</span>` : ''}<span class="badge ${!tk.open ? 'admin' : tk.adminId ? 'admin' : 'flag'}">${!tk.open ? (tk.resolved ? '✓ ' + t('resolved') : t('closed')) : tk.adminId ? `${t('handled_by')} ${esc(tk.adminName)}` : 'NEW'}</span></div>
+          <div class="tsum">“${esc(tk.summary || '…')}”</div>
+          ${tk.category ? `<div class="dim" style="font-size:.78rem">${t('category')}: ${esc(tc(tk.category))}</div>` : ''}</button>`).join('') : `<div class="welcome">${t('no_tickets')}</div>`}</div>`;
       main.innerHTML = html;
       $$('[data-tk]', main).forEach((b) => b.onclick = () => { S.ticketOpen = b.dataset.tk; sfx('open'); renderChatMain(); });
       return;
     }
 
-    let list = []; let welcome = '';
+    let list = []; let welcome = ''; let foot = ''; let canWrite = true;
     if (S.chan === 'global') list = S.chat.global;
     if (S.chan === 'lb') { list = S.chat.lb; welcome = t('lb_welcome'); }
+    if (S.chan === 'dm') {
+      const pid = S.me?.isHost ? S.dmOpen : S.me?.id;
+      list = S.dms[pid] || [];
+      if (S.me?.isHost) html += `<div class="tactions"><button class="btn small ghost" data-dmback>${t('back_queue')}</button><b>${esc(playerName(pid))}</b></div>`;
+    }
+    const tk = S.chan === 'help' && admin ? S.tickets.find((x) => x.id === S.ticketOpen) : null;
     if (S.chan === 'help') {
       if (admin) {
-        const tk = S.tickets.find((x) => x.id === S.ticketOpen);
         if (!tk) { S.ticketOpen = null; return renderChatMain(); }
         list = S.ticketMsgs[tk.id] || [];
         const mine = tk.adminId === S.me.id;
-        html += `<details class="tinfo" ${mine ? '' : 'open'}><summary>ℹ ${t('ticket_summary')} · ${esc(tk.playerName)}</summary><dl><dt>${t('ticket_summary')}</dt><dd>${esc(tk.summary)}</dd>
+        html += `<details class="tinfo" ${mine ? '' : 'open'}><summary>ℹ ${t('ticket_summary')} · ${esc(tk.playerName)}</summary><dl><dt>${t('ticket_summary')}</dt><dd>${esc(tk.summary || '…')}</dd>
           <dt>${t('ai_answered')}</dt><dd>${esc(tk.aiAnswer || '…')}</dd>
-          <dt>${t('how_handle')} · ${esc(tc(tk.category))}</dt><dd>${esc(tc(tk.howTo))}</dd></dl></details>
+          ${tk.category ? `<dt>${t('how_handle')} · ${esc(tc(tk.category))}</dt><dd>${esc(tc(tk.howTo))}</dd>` : ''}</dl></details>
           <div class="tactions"><button class="btn small ghost" data-tq>${t('back_queue')}</button>
-          ${!tk.adminId ? `<button class="btn small primary" data-claim>${t('join_chat')}</button>` : mine ? `<button class="btn small warn" data-release>${t('leave_chat')}</button>` : `<span class="badge admin">${t('handled_by')} ${esc(tk.adminName)}</span>`}
-          <button class="btn small danger" data-close>${t('close_ticket')}</button></div>`;
-      } else { list = S.chat.help; welcome = t('help_welcome'); }
+          ${!tk.open ? `<span class="badge admin">${tk.resolved ? '✓ ' + t('resolved') : t('closed')}</span>` : !tk.adminId ? `<button class="btn small primary" data-claim>${t('join_chat')}</button>` : mine ? `<button class="btn small warn" data-release>${t('leave_chat')}</button>` : `<span class="badge admin">${t('handled_by')} ${esc(tk.adminName)}</span>`}
+          ${tk.open ? `<button class="btn small danger" data-close>${t('close_ticket')}</button>` : ''}</div>`;
+        canWrite = tk.open && !(tk.adminId && tk.adminId !== S.me.id);
+      } else {
+        const H2 = S.me?.help;
+        list = S.chat.help;
+        if (!H2) { if (!S.helpStarting) { S.helpStarting = true; S.chat.help = []; Net.request('help:start', {}).then((r) => { S.helpStarting = false; if (r.error) toastErr(r.error); }); } canWrite = false; }
+        else if (!H2.open) {
+          canWrite = false;
+          foot = `<div class="ticket-closed">✅ ${H2.resolved ? t('ticket_resolved') : t('ticket_closed')}<button class="btn primary small" data-newticket>${t('new_ticket')}</button></div>`;
+        } else {
+          const last = list[list.length - 1];
+          if (last && last.from.id === 'botgeorge' && last.actions) foot = `<div class="bot-actions"><button class="btn small warn" data-hact="manager">🙋 ${t('act_manager')}</button><button class="btn small info" data-hact="continue">💬 ${t('act_continue')}</button><button class="btn small primary" data-hact="helped">✅ ${t('act_helped')}</button></div>`;
+          if (H2.priority) foot += `<div class="dim" style="padding:2px 12px;font-size:.8rem;display:flex;align-items:center;gap:8px;justify-content:space-between">⬆ ${t('waiting_manager')}${foot ? '' : `<button class="btn small primary" data-hact="helped">✅ ${t('act_helped')}</button>`}</div>`;
+        }
+      }
     }
-    html += `<div class="msgs" id="msgs">${welcome ? `<div class="welcome">${welcome}</div>` : ''}${list.map(msgHtml).join('')}</div>`;
+    const lim = (S.chan === 'global' || S.chan === 'lb') ? limitUntil('chat') : S.chan === 'help' ? limitUntil('help') : 0;
+    html += `<div class="msgs" id="msgs">${welcome ? `<div class="welcome">${welcome}</div>` : ''}${list.map(msgHtml).join('')}</div>${foot}`;
     if (S.chan === 'lb') html += `<div class="presets">${CT.LB_PRESETS.map((p) => `<button class="preset" data-preset="${p.id}">${esc(tc(p))}</button>`).join('')}</div>`;
     const muted = S.chan === 'global' && S.me && S.me.mutedUntil > Net.serverNow();
-    const tk = S.chan === 'help' && admin ? S.tickets.find((x) => x.id === S.ticketOpen) : null;
-    const blocked = tk && tk.adminId && tk.adminId !== S.me.id;
-    if (muted) html += `<div class="muted-note">🔇 ${t('you_muted')} ${new Date(S.me.mutedUntil).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>`;
-    else html += `<form class="composer" id="composer"><input class="input" id="c-input" maxlength="300" placeholder="${t('type_msg')}" autocomplete="off" ${blocked ? 'disabled' : ''}><button class="btn primary" ${blocked ? 'disabled' : ''}>${t('send')}</button></form>`;
+    if (lim) html += `<div class="muted-note">⛔ ${limitText(lim)}</div>`;
+    else if (muted) html += `<div class="muted-note">🔇 ${t('you_muted')} ${new Date(S.me.mutedUntil).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div>`;
+    else html += `<form class="composer" id="composer"><input class="input" id="c-input" maxlength="300" placeholder="${t('type_msg')}" autocomplete="off" ${canWrite ? '' : 'disabled'}><button class="btn primary" ${canWrite ? '' : 'disabled'}>${t('send')}</button></form>`;
     main.innerHTML = html;
     const msgs = $('#msgs'); msgs.scrollTop = msgs.scrollHeight;
 
     const send = async (payload) => {
-      const r = await Net.request('chat:send', payload);
+      const r = await Net.request(S.chan === 'dm' ? 'dm:send' : 'chat:send', payload);
       if (r.error) toastErr(r.error); else sfx('click');
       return r;
     };
@@ -921,7 +989,7 @@
     if (comp) comp.onsubmit = async (e) => {
       e.preventDefault();
       const inp = $('#c-input'); const text = inp.value.trim(); if (!text) return;
-      const payload = { channel: S.chan, text };
+      const payload = S.chan === 'dm' ? { text, targetId: S.me?.isHost ? S.dmOpen : undefined } : { channel: S.chan, text };
       if (tk) payload.ticketId = tk.id;
       inp.value = '';
       const r = await send(payload);
@@ -929,10 +997,33 @@
       inp.focus();
     };
     $$('[data-preset]', main).forEach((b) => b.onclick = () => send({ channel: 'lb', presetId: b.dataset.preset }));
+    $$('[data-hact]', main).forEach((b) => b.onclick = async () => { $$('[data-hact]', main).forEach((x) => (x.disabled = true)); const r = await Net.request('help:action', { action: b.dataset.hact }); if (r.error) toastErr(r.error); else sfx(b.dataset.hact === 'helped' ? 'success' : 'click'); });
+    const nt = $('[data-newticket]', main); if (nt) nt.onclick = async () => { S.chat.help = []; const r = await Net.request('help:start', {}); if (r.error) toastErr(r.error); renderChatMain(); };
+    const db = $('[data-dmback]', main); if (db) db.onclick = () => { S.dmOpen = null; renderChatMain(); };
     const bq = $('[data-tq]', main); if (bq) bq.onclick = () => { S.ticketOpen = null; renderChatMain(); };
     const cl = $('[data-claim]', main); if (cl) cl.onclick = async () => { const r = await Net.request('help:claim', { ticketId: tk.id }); if (r.error) toastErr(r.error); };
     const rl = $('[data-release]', main); if (rl) rl.onclick = async () => { const r = await Net.request('help:release', { ticketId: tk.id }); if (r.error) toastErr(r.error); else { S.ticketOpen = null; renderChatMain(); } };
     const cs = $('[data-close]', main); if (cs) cs.onclick = async () => { const r = await Net.request('help:close', { ticketId: tk.id }); if (r.error) toastErr(r.error); else { S.ticketOpen = null; } };
+  }
+
+  // ── host restrictions ──
+  function limitUntil(ab) { const l = S.me?.limits || {}; const n = Net.serverNow(); const v = Math.max(l[ab] || 0, l.all || 0); return v > n ? v : 0; }
+  function limitText(until) { return until >= Number.MAX_SAFE_INTEGER - 1 ? t('limited_end') : t('limited_until', { time: new Date(until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) }); }
+  function showLimit(id) {
+    const ov = openModal(`<h2>⛔ ${t('limit')} · ${esc(playerName(id))}</h2>
+      <div class="field"><label>${t('limit_what')}</label><div class="chips">${['calls', 'chat', 'mda', 'help', 'all'].map((a, i) => `<button type="button" class="chip ${i === 0 ? 'on' : ''}" data-lab="${a}">${t('lim_' + a)}</button>`).join('')}</div></div>
+      <div class="field"><label>${t('limit_for')}</label><div class="chips">${[[2, '2 ' + t('minutes')], [5, '5 ' + t('minutes')], [15, '15 ' + t('minutes')], [-1, t('until_end')]].map(([m, l], i) => `<button type="button" class="chip ${i === 1 ? 'on' : ''}" data-lmin="${m}">${l}</button>`).join('')}</div></div>
+      <div class="file-row"><button class="btn danger" data-lapply>⛔ ${t('limit_apply')}</button><button class="btn" data-lclear>${t('limit_remove')}</button></div>`);
+    let ab = 'calls', min = 5;
+    $$('[data-lab]', ov).forEach((b) => b.onclick = () => { ab = b.dataset.lab; $$('[data-lab]', ov).forEach((x) => x.classList.toggle('on', x === b)); });
+    $$('[data-lmin]', ov).forEach((b) => b.onclick = () => { min = Number(b.dataset.lmin); $$('[data-lmin]', ov).forEach((x) => x.classList.toggle('on', x === b)); });
+    const go = async (m) => { const r = await Net.request('admin:limit', { targetId: id, ability: ab, minutes: m }); if (r.error) return toastErr(r.error); sfx('click'); toast(`<span class="ta">⛔</span><span class="tt">${m === 0 ? t('limit_removed') : t('limit_done')}</span>`); closeModal(); };
+    $('[data-lapply]', ov).onclick = () => go(min);
+    $('[data-lclear]', ov).onclick = () => go(0);
+  }
+  function bindHostButtons(root) {
+    $$('[data-limit]', root).forEach((b) => b.onclick = () => showLimit(b.dataset.limit));
+    $$('[data-dmto]', root).forEach((b) => b.onclick = () => { S.chan = 'dm'; S.dmOpen = b.dataset.dmto; closeModal(); openWin('chat'); renderChat(); });
   }
 
   function renderMembers() {
@@ -947,13 +1038,14 @@
             <button class="btn small warn" data-mute="${p.id}" data-min="${p.muted ? 0 : 5}">${p.muted ? t('unmute') : t('mute_5')}</button>
             <button class="btn small danger" data-kick="${p.id}">${t('kick')}</button>
             ${me.isHost ? `<button class="btn small info" data-promote="${p.id}">${p.isAdmin ? t('remove_admin') : t('make_admin')}</button>` : ''}</div>` : ''}
-          ${me.isAdmin && !p.bot ? `<div class="macts"><button class="btn small" data-hist="${p.id}">📜 ${t('history')}</button><button class="btn small warn" data-money="${p.id}">${me.isHost ? '± ' + t('money_adjust') : '💡 ' + t('suggest')}</button></div>` : ''}</div>`;
+          ${me.isAdmin && !p.bot ? `<div class="macts"><button class="btn small" data-hist="${p.id}">📜 ${t('history')}</button><button class="btn small warn" data-money="${p.id}">${me.isHost ? '± ' + t('money_adjust') : '💡 ' + t('suggest')}</button></div>` : ''}
+          ${me.isHost && p.id !== me.id && !p.bot ? `<div class="macts"><button class="btn small info" data-dmto="${p.id}">✉ ${t('ch_dm')}</button><button class="btn small danger" data-limit="${p.id}">⛔ ${t('limit')}</button></div>` : ''}</div>`;
       }).join('');
     $('[data-x]', el).onclick = () => { S.showMembers = false; renderChat(); };
     $$('[data-mute]', el).forEach((b) => b.onclick = async () => { const r = await Net.request('mod:mute', { targetId: b.dataset.mute, minutes: Number(b.dataset.min) }); if (r.error) toastErr(r.error); });
     $$('[data-kick]', el).forEach((b) => b.onclick = async () => { const r = await Net.request('mod:kick', { targetId: b.dataset.kick }); if (r.error) toastErr(r.error); });
     $$('[data-promote]', el).forEach((b) => b.onclick = async () => { const r = await Net.request('lobby:promote', { targetId: b.dataset.promote }); if (r.error) toastErr(r.error); });
-    bindAdminButtons(el);
+    bindAdminButtons(el); bindHostButtons(el);
   }
 
   // ───────────────────────── manager tools (modal) ─────────────────────────
@@ -1023,15 +1115,17 @@
     else if (E.stage === 'board') body = endBoard(E, me);
     else body = endPodium(E);
     const left = E.board ? E.board.hidden.length : 0;
+    const flipFrom = E.stage === 'board' && !firstPaint ? captureBoard() : null;
     $('#app').innerHTML = `<section class="screen endscreen ${firstPaint ? '' : 'still'}">
       <header class="end-head"><span class="brand mono">📊 ${t('app_polls')}</span>
         <ol class="stage-dots">${E.stages.map((st, i) => `<li class="${i < idx ? 'past' : i === idx ? 'now' : ''}" title="${t(STAGE_LABEL[st])}">${i + 1}</li>`).join('')}</ol>
         <span class="end-stage">${t(STAGE_LABEL[E.stage])}</span></header>
       <div class="end-body">${body}</div>
-      ${me.isHost ? `<footer class="host-bar"><span class="dim">${E.stage === 'board' && left ? t('host_reveal_hint', { n: left }) : E.stage === 'podium' ? t('host_podium_hint') : t('host_space_hint')}</span>
+      ${me.isHost ? `<footer class="host-bar"><span class="dim">${E.stage === 'board' && left ? t('host_reveal_hint', { n: left }) : E.stage === 'podium' ? t('host_podium_hint2') : t('host_space_hint')}</span>
         ${E.stage !== 'podium' ? `<button class="btn primary big" id="end-next">${E.stage === 'board' && left ? t('reveal_next') : t('next_stage')} <kbd>␣ Space</kbd></button>` : `<button class="btn primary big" data-lobby>${t('back_lobby')}</button>`}</footer>` : `<footer class="host-bar"><span class="dim">${t('wait_host_space')}</span></footer>`}
     </section>`;
     bindEnd(E, me);
+    if (flipFrom) playFlip(flipFrom, E);
   }
   function endFeedback(E, me) {
     if (me.endFeedback) return `<div class="end-card"><h2>✓ ${t('fb_thanks')}</h2><p class="dim">${t('fb_yours', { n: me.endFeedback.rating })}</p><p id="fb-count" class="dim">${t('fb_count', { n: E.feedbackCount, m: E.playerCount })}</p></div>`;
@@ -1072,26 +1166,127 @@
     const B = E.board || { revealed: [], hidden: [] };
     const adminBtns = (id) => me.isAdmin ? `<span class="row-acts"><button class="btn small" data-hist="${id}" title="${t('history')}">📜</button><button class="btn small warn" data-money="${id}" title="${t('money_adjust')}">±</button></span>` : '';
     return `<div class="board-wrap">
-      <div class="board-main"><h3>${t('board_main')}</h3><ol class="rank-table">${B.revealed.length ? B.revealed.map((p, i) => `<li class="${p.id === B.last ? 'fly-in' : ''} ${p.id === me.id ? 'me' : ''}"><span class="rk mono">${i + 1}</span><span class="rn">${esc(p.name)}</span><span class="rm mono">${money(p.money)}</span>${adminBtns(p.id)}</li>`).join('') : `<li class="dim empty">${t('board_empty')}</li>`}</ol></div>
-      <div class="board-names"><h3>${t('board_names')} (${B.hidden.length})</h3><ul>${B.hidden.map((p) => `<li>${esc(p.name)}</li>`).join('')}</ul></div></div>`;
+      <div class="board-main"><h3>${t('board_main')}</h3><ol class="rank-table">${B.revealed.length ? B.revealed.map((p, i) => `<li data-row="${p.id}" class="${p.id === me.id ? 'me' : ''}"><span class="rk mono">${i + 1}</span><span class="rn">${esc(p.name)}</span><span class="mv"></span><span class="rm mono" data-money="${p.money}">${money(p.money)}</span>${adminBtns(p.id)}</li>`).join('') : `<li class="dim empty">${t('board_empty')}</li>`}</ol></div>
+      <div class="board-names"><h3>${t('board_names')} (${B.hidden.length})</h3><ul>${B.hidden.map((p) => `<li data-nm="${p.id}">${esc(p.name)}</li>`).join('')}</ul></div></div>`;
   }
-  function endPodium(E) {
-    const P = E.podium; if (!P) return '';
-    const el = Math.max(0, Net.serverNow() - P.startedAt);
-    const order = [2, 1, 0]; // third, second, first
-    const slot = (place) => {
-      const p = P.top[place]; if (!p) return '';
-      const showAt = order.indexOf(place) * 10000; const on = el >= showAt;
-      const ach = p.achievements;
-      return `<div class="pod2 p${place + 1} ${on ? 'on' : ''}" style="--delay:${showAt}ms">
-        <div class="pod-card"><div class="medal">${['🥇', '🥈', '🥉'][place]}</div><div class="pn">${esc(p.name)}</div><div class="pm mono">${money(p.money)}</div>
-          <div class="pscore"><span class="mono">${p.score}</span><small>${t('player_score')}</small></div>
-          <div class="ach-slides">${ach.map((a, i) => `<div class="ach" style="--i:${i};--n:${ach.length}">${esc(tc(a))}</div>`).join('')}</div>
-          ${p.note ? `<p class="pnote">🤖 ${esc(tc(p.note))}</p>` : ''}
-          <ul class="phist">${p.history.map((h) => `<li>${esc(tc(h))}</li>`).join('')}</ul></div>
-        <div class="block mono">${place + 1}</div></div>`;
+  // Smooth leaderboard: remember where every row and name was, then glide them to their new places
+  function captureBoard() {
+    const pos = {};
+    $$('[data-row]').forEach((el) => { const r = el.getBoundingClientRect(); pos[el.dataset.row] = { x: r.left, y: r.top, rank: Number($('.rk', el).textContent) }; });
+    $$('[data-nm]').forEach((el) => { const r = el.getBoundingClientRect(); pos['nm:' + el.dataset.nm] = { x: r.left, y: r.top }; });
+    return pos;
+  }
+  function playFlip(from, E) {
+    if (!from || !Element.prototype.animate) return;
+    const last = E.board && E.board.last;
+    $$('[data-row]').forEach((el) => {
+      const id = el.dataset.row; const r = el.getBoundingClientRect();
+      const old = from[id] || from['nm:' + id];
+      const rank = Number($('.rk', el).textContent);
+      if (!old) return;
+      const dx = old.x - r.left, dy = old.y - r.top;
+      const entering = !from[id];
+      if (!dx && !dy && !entering) return;
+      el.animate(entering
+        ? [{ transform: `translate(${dx}px, ${dy}px) scale(.92)`, boxShadow: '0 0 0 2px #39ff88, 0 0 40px #39ff88', opacity: .85 },
+           { transform: `translate(${dx * 0.35}px, ${dy * 0.5 - 24}px) scale(1.08)`, boxShadow: '0 0 0 2px #39ff88, 0 0 50px #39ff88', offset: 0.55 },
+           { transform: 'none', boxShadow: '0 0 0 0 rgba(0,0,0,0)', opacity: 1 }]
+        : [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+        { duration: entering ? 1400 : 1100, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      const mv = $('.mv', el);
+      if (!entering && from[id].rank !== rank && mv) { mv.textContent = rank < from[id].rank ? '▲' : '▼'; mv.className = 'mv ' + (rank < from[id].rank ? 'up' : 'down'); setTimeout(() => { mv.textContent = ''; mv.className = 'mv'; }, 1800); }
+      if (entering) {
+        const m = $('.rm', el); const target = Number(m.dataset.money) || 0; const t0 = performance.now();
+        const tick = (tt) => { const k = Math.min(1, (tt - t0) / 1300); m.textContent = money(Math.round(target * (1 - Math.pow(1 - k, 3)))); if (k < 1) requestAnimationFrame(tick); };
+        requestAnimationFrame(tick);
+      }
+    });
+    if (last) sfx('coin');
+  }
+
+  // ── Podium ceremony: 3rd (15 s) → 2nd (15 s) → winner celebration (15 s) → final podium ──
+  const CER_STEP = 15000;
+  function endPodium(E) { return E.podium ? `<div class="ceremony" id="cer"><canvas id="fw" aria-hidden="true"></canvas><div id="cer-in"></div></div>` : ''; }
+  function cerPlaces(P) { return [2, 1, 0].filter((i) => P.top[i]); }
+  function cerCard(p, place, winner) {
+    const st = p.stats || {};
+    const half = p.feedback ? Math.round(p.feedback.rating / 2) : 0;
+    return `<div class="cer-card ${winner ? 'winner' : ''} p${place + 1}">
+      <header><span class="cer-medal">${['🥇', '🥈', '🥉'][place]}</span><div><div class="cer-place">${t('place_n', { n: place + 1 })}</div><div class="cer-name">${esc(p.name)}</div></div>
+        <div class="cer-score"><span class="mono" data-count="${p.score}">0</span><small>${t('player_score')}</small></div></header>
+      <div class="cer-coins mono" data-countm="${p.money}">${money(0)}</div>
+      ${winner ? `<div class="cer-slides">${p.achievements.map((a, i) => `<div class="cer-slide ${i === 0 ? 'on' : ''}">${esc(tc(a))}</div>`).join('')}</div>` : ''}
+      <div class="cer-grid">
+        <section><h4>🏅 ${t('cer_ach')}</h4><ul class="chips-list">${p.achievements.map((a) => `<li>${esc(tc(a))}</li>`).join('')}</ul></section>
+        <section><h4>📊 ${t('cer_stats')}</h4><dl class="stat-dl">
+          <dt>${t('cer_answered')}</dt><dd class="mono">${st.answered || 0}</dd><dt>${t('cer_helped')}</dt><dd class="mono">${st.correct || 0}</dd>
+          <dt>${t('cer_acc')}</dt><dd class="mono">${st.accuracy || 0}%</dd>${st.avgSolveSec != null ? `<dt>${t('cer_avg')}</dt><dd class="mono">${st.avgSolveSec}s</dd>` : ''}
+          <dt>${t('cer_hang')}</dt><dd class="mono">${st.hangups || 0}</dd><dt>${t('cer_worlds')}</dt><dd class="mono">${st.worlds || 0}</dd></dl></section>
+        <section><h4>☎ ${t('cer_perf')}</h4><ul class="perf">${(p.performance || []).length ? p.performance.map((x) => `<li class="${x.delta > 0 ? 'ok' : 'no'}">${x.delta > 0 ? '✔' : '✖'} ${esc(tc(x))}</li>`).join('') : `<li class="dim">${t('hist_empty')}</li>`}</ul></section>
+        <section><h4>💬 ${t('cer_feedback')}</h4>${p.feedback ? `<div class="cer-stars">${'★'.repeat(half)}${'☆'.repeat(5 - half)} <span class="mono">${p.feedback.rating}/10</span></div><blockquote>${p.feedback.text ? esc(p.feedback.text) : `<span class="dim">${t('no_text')}</span>`}</blockquote>` : `<p class="dim">${t('cer_no_fb')}</p>`}</section>
+      </div>
+      <p class="cer-summary">${p.byAI ? '🤖 ' + t('ai_summary') : t('auto_summary')}: ${esc(tc(p.summary))}</p>
+      <div class="cer-bar"><i></i></div></div>`;
+  }
+  function cerFinal(P) {
+    const b = (place) => P.top[place] ? `<div class="fin p${place + 1}"><div class="fin-medal">${['🥇', '🥈', '🥉'][place]}</div><div class="fin-name">${esc(P.top[place].name)}</div><div class="fin-score mono">${P.top[place].score}</div><div class="block mono">${place + 1}</div></div>` : '<div></div>';
+    return `<div class="cer-final"><h2>🏆 ${t('cer_final')}</h2><div class="fin-row">${b(1)}${b(0)}${b(2)}</div></div>`;
+  }
+  function countUps(root) {
+    $$('[data-count], [data-countm]', root).forEach((el) => {
+      const isM = el.hasAttribute('data-countm');
+      const target = Number(isM ? el.dataset.countm : el.dataset.count) || 0; const t0 = performance.now();
+      const tick = (tt) => { const k = Math.min(1, (tt - t0) / 2200); const v = Math.round(target * (1 - Math.pow(1 - k, 3))); el.textContent = isM ? money(v) : v; if (k < 1) requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+  }
+  function fireworks(canvas) {
+    if (!canvas) return () => {};
+    const ctx = canvas.getContext('2d'); let parts = []; let alive = true; let lastBurst = 0;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * dpr; canvas.height = canvas.clientHeight * dpr;
+    const colors = ['#ffd23f', '#39ff88', '#ff3df2', '#33e6ff', '#ff4b5c', '#ffffff'];
+    const burst = () => {
+      const x = canvas.width * (0.15 + Math.random() * 0.7), y = canvas.height * (0.12 + Math.random() * 0.35); const c = colors[(Math.random() * colors.length) | 0];
+      for (let i = 0; i < 70; i++) { const a = Math.random() * Math.PI * 2, v = (1.5 + Math.random() * 4) * dpr; parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, c }); }
+      for (let i = 0; i < 18; i++) parts.push({ x: Math.random() * canvas.width, y: -10, vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 3, life: 1.6, c: colors[i % colors.length], conf: true });
     };
-    return `<div class="podium2" data-start="${P.startedAt}">${slot(1)}${slot(0)}${slot(2)}</div>`;
+    const loop = (tt) => {
+      if (!alive || !canvas.isConnected) return;
+      if (tt - lastBurst > 520) { burst(); lastBurst = tt; }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      parts = parts.filter((q) => q.life > 0);
+      for (const q of parts) {
+        q.x += q.vx; q.y += q.vy; q.vy += q.conf ? 0.02 : 0.06 * dpr; q.vx *= 0.985; q.life -= q.conf ? 0.006 : 0.014;
+        ctx.globalAlpha = Math.max(0, Math.min(1, q.life)); ctx.fillStyle = q.c;
+        if (q.conf) ctx.fillRect(q.x, q.y, 6 * dpr, 3 * dpr); else { ctx.beginPath(); ctx.arc(q.x, q.y, 2.2 * dpr, 0, 7); ctx.fill(); }
+      }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+    return () => { alive = false; };
+  }
+  function runCeremony() {
+    const P = S.room.end && S.room.end.podium; const box = $('#cer-in'); if (!P || !box) return;
+    const places = cerPlaces(P); const el = Math.max(0, Net.serverNow() - P.startedAt);
+    const idx = Math.floor(el / CER_STEP); const phase = idx < places.length ? 'p' + places[idx] : 'final';
+    const within = el - idx * CER_STEP;
+    if (phase !== S.cerPhase || !box.firstChild) {
+      const fresh = phase !== S.cerPhase;
+      S.cerPhase = phase;
+      const winner = phase === 'p0';
+      box.innerHTML = phase === 'final' ? cerFinal(P) : cerCard(P.top[places[idx]], places[idx], winner);
+      countUps(box);
+      if (S.stopFw) { S.stopFw(); S.stopFw = null; }
+      if (winner || phase === 'final') S.stopFw = fireworks($('#fw'));
+      if (fresh) {
+        if (winner) { sfx('fanfare'); [0, 900, 1800, 2700, 3600, 4500].forEach((d) => setTimeout(() => sfx('clap'), d)); }
+        else if (phase === 'final') sfx('jackpot');
+        else sfx('whoosh');
+      }
+    }
+    const bar = $('.cer-bar i', box); if (bar) bar.style.width = Math.min(100, (within / CER_STEP) * 100) + '%';
+    const slides = $$('.cer-slide', box); if (slides.length) { const k = Math.floor(within / (CER_STEP / slides.length)) % slides.length; slides.forEach((x, i) => x.classList.toggle('on', i === k)); }
   }
   function bindEnd(E, me) {
     const app = $('#app');
@@ -1103,20 +1298,13 @@
       $$('[data-rate]', form).forEach((b) => b.onclick = () => { rating = Number(b.dataset.rate); $$('[data-rate]', form).forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', x === b); }); $('#fb-send', form).disabled = false; sfx('click'); });
       form.onsubmit = async (e) => { e.preventDefault(); if (!rating) return; const r = await Net.request('end:feedback', { rating, text: $('#fb-text', form).value }); if (r.error) toastErr(r.error); else sfx('success'); };
     }
-    $$('[data-vote]', app).forEach((b) => b.onclick = async () => { $$('[data-vote]', app).forEach((x) => (x.disabled = true)); const r = await Net.request('end:vote', { choice: b.dataset.vote }); if (r.error) toastErr(r.error); else sfx('coin'); });
     bindAdminButtons(app);
-    const fly = $('.fly-in', app); if (fly) sfx('coin');
-    $$('.ach-slides', app).forEach((box) => { const f = $('.ach', box); if (f) f.classList.add('on'); });
-    if (E.stage === 'podium' && !S.podiumTick) {
-      sfx('jackpot');
-      S.podiumTick = setInterval(() => {
-        if (S.view !== 'end' || !S.room.end || S.room.end.stage !== 'podium') { clearInterval(S.podiumTick); S.podiumTick = null; return; }
-        const el = Net.serverNow() - S.room.end.podium.startedAt;
-        $$('.pod2', app).forEach((d) => { const at = parseInt(d.style.getPropertyValue('--delay'), 10) || 0; if (el >= at && !d.classList.contains('on')) { d.classList.add('on'); sfx('success'); } });
-        // achievements slideshow: one at a time, 2.5 s each
-        const step = Math.floor(el / 2500);
-        $$('.ach-slides', app).forEach((box) => { const items = $$('.ach', box); items.forEach((it, i) => it.classList.toggle('on', i === step % items.length)); });
-      }, 250);
+    if (E.stage === 'podium') {
+      S.cerPhase = null; runCeremony();
+      if (!S.podiumTick) S.podiumTick = setInterval(() => {
+        if (S.view !== 'end' || !S.room.end || S.room.end.stage !== 'podium') { clearInterval(S.podiumTick); S.podiumTick = null; if (S.stopFw) { S.stopFw(); S.stopFw = null; } return; }
+        runCeremony();
+      }, 200);
     }
   }
   async function advanceEnd() {
@@ -1227,6 +1415,16 @@
     S.me = me;
     if (prev && prev.isAdmin !== me.isAdmin && isOpen('chat')) renderChat();
     if (prev && prev.mutedUntil !== me.mutedUntil && isOpen('chat') && S.chan === 'global') renderChatMain();
+    const helpChanged = prev && JSON.stringify(prev.help) !== JSON.stringify(me.help);
+    const limChanged = prev && JSON.stringify(prev.limits) !== JSON.stringify(me.limits);
+    if ((helpChanged || limChanged) && isOpen('chat')) renderChatMain();
+    if (limChanged) {
+      if (S.callsTab === 'call') renderStage(null, true);
+      if (isOpen('mda')) renderMda();
+      const ab = Object.keys(me.limits || {}).find((k) => (me.limits[k] || 0) > Net.serverNow() && !((prev.limits || {})[k] > Net.serverNow()));
+      if (ab) { sfx('error'); toast(`<span class="ta">⛔</span><span class="tt">${esc(t('you_limited', { what: t('lim_' + ab) }))}</span>`, { cls: 'err', ms: 6000 }); }
+      updateIcons();
+    }
     if (!S.call || !me.call || S.call.id !== me.call.id || S.call.status !== me.call.status) {
       if (me.call || (S.call && S.call.status !== 'done')) onCall(me.call);
     }
@@ -1237,6 +1435,8 @@
 
   Net.on('history', (h) => {
     S.chat.global = h.global || []; S.chat.lb = h.lb || []; S.chat.help = h.help || [];
+    if (h.notes) S.notes = h.notes;
+    if (h.dms) S.dms = h.dms;
     if (h.tickets) S.tickets = h.tickets;
     if (h.ticketMsgs) S.ticketMsgs = h.ticketMsgs;
     if (isOpen('chat')) renderChat();
@@ -1244,8 +1444,31 @@
 
   Net.on('chat', ({ channel, msg }) => pushChat(channel, msg));
   Net.on('lb', (msg) => pushChat('lb', msg));
+  Net.on('note', (n) => {
+    const i = S.notes.findIndex((x) => x.id === n.id);
+    if (i >= 0) S.notes[i] = n; else S.notes.push(n);
+    if (S.notes.length > 150) S.notes.shift();
+    if (n.severity === 'critical') {
+      sfx('error');
+      toast(`<span class="ta">🚨</span><span class="tt"><b>${esc(n.name)}</b><br>${esc(tc(n.text))}</span><span class="btn small danger">${t('ch_notes')}</span>`, { cls: 'err crit-toast', ms: 9000, onClick: () => { openWin('chat'); S.chan = 'notes'; S.notesSeen = Date.now(); renderChat(); } });
+    }
+    if (isOpen('chat')) { renderChans(); if (S.chan === 'notes') renderChatMain(); }
+    updateIcons();
+  });
+  Net.on('dm', ({ playerId, msg }) => {
+    (S.dms[playerId] = S.dms[playerId] || []).push(msg);
+    const here = isOpen('chat') && S.chan === 'dm' && (!S.me?.isHost || S.dmOpen === playerId);
+    if (here) renderChatMain();
+    else if (msg.from.id !== S.me?.id) { S.unread.dm = (S.unread.dm || 0) + 1; sfx('msg'); toast(`<span class="ta">✉</span><span class="tt"><b>${esc(msg.from.name)}</b><br>${esc(msg.text.slice(0, 80))}</span>`, { onClick: () => { openWin('chat'); S.chan = 'dm'; if (S.me?.isHost) S.dmOpen = playerId; renderChat(); } }); }
+    if (isOpen('chat')) renderChans();
+    updateIcons();
+  });
+  Net.on('help:priority', ({ name }) => { sfx('msg'); toast(`<span class="ta">🙋</span><span class="tt">${esc(t('priority_toast', { name }))}</span>`, { onClick: () => { openWin('chat'); S.chan = 'help'; renderChat(); } }); });
   Net.on('help', ({ ticketId, msg }) => {
-    if (ticketId === S.me?.id && !S.me.isAdmin) return pushChat('help', msg);
+    const mineTicket = S.me?.help ? S.me.help.ticketId === ticketId : !S.me?.isAdmin;
+    if (!S.me?.isAdmin || mineTicket && !S.tickets.some((x) => x.id === ticketId && x.ownerId !== S.me.id)) {
+      if (!S.me?.isAdmin || S.me?.help?.ticketId === ticketId) { pushChat('help', msg); if (isOpen('chat') && S.chan === 'help') renderChatMain(); return; }
+    }
     if (S.me?.isAdmin) {
       (S.ticketMsgs[ticketId] = S.ticketMsgs[ticketId] || []).push(msg);
       if (isOpen('chat') && S.chan === 'help' && S.ticketOpen === ticketId) {
@@ -1297,6 +1520,14 @@
     const clk = $('#tb-clock'); if (clk) clk.textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     if (S.me?.mutedUntil && S.me.mutedUntil < Net.serverNow() && S.chan === 'global' && $('.muted-note')) renderChatMain();
   }, 250);
+
+  // heartbeat: tells the server which app is open and what money is shown on screen
+  setInterval(() => {
+    if (!S.room || S.room.phase === 'lobby' || !S.online) return;
+    const mEl = $('#tb-money'); const shown = mEl ? Number(mEl.textContent.replace(/[^\d]/g, '')) : null;
+    const app = S.view === 'end' ? 'polls' : (S.focused && isOpen(S.focused) ? S.focused : 'desktop');
+    Net.request('client:beat', { app, money: Number.isFinite(shown) && mEl ? shown : undefined, visible: !document.hidden });
+  }, 8000);
 
   window.addEventListener('resize', () => {
     const ws = $('#ws'); if (!ws) return;

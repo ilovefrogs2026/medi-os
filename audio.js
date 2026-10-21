@@ -60,7 +60,12 @@ window.Audio8 = (() => {
     error: () => tone(180, 0.15, { type: 'square', vol: 0.15 }),
     mystery: () => [392, 370, 349, 330].forEach((f, i) => tone(f, 0.35, { type: 'triangle', vol: 0.15, at: i * 0.3 })),
     launch: () => { noise(3.2, { vol: 0.35, from: 150, to: 3000 }); tone(80, 3, { type: 'sawtooth', vol: 0.12, slide: 900 }); },
-    type: () => tone(1800 + Math.random() * 600, 0.015, { vol: 0.04 })
+    type: () => tone(1800 + Math.random() * 600, 0.015, { vol: 0.04 }),
+    fanfare: () => { const seq = [[392, 0], [523, 0.18], [659, 0.36], [784, 0.54], [659, 0.8], [784, 0.95], [1046, 1.15]];
+      seq.forEach(([f, at]) => { tone(f, 0.32, { type: 'sawtooth', vol: 0.12, at }); tone(f / 2, 0.32, { type: 'square', vol: 0.06, at }); });
+      [523, 659, 784].forEach((f) => tone(f, 1.4, { type: 'sawtooth', vol: 0.07, at: 1.4 })); },
+    clap: () => { for (let i = 0; i < 6; i++) noise(0.05, { vol: 0.28, at: i * 0.11 + Math.random() * 0.04, from: 900, to: 2600 }); },
+    whoosh: () => { noise(0.6, { vol: 0.18, from: 200, to: 3000 }); tone(220, 0.5, { type: 'triangle', vol: 0.08, slide: 440 }); }
   };
 
   function play(name) { if (!cfg.sfx || !ensure()) return; (SFX[name] || SFX.click)(); }

@@ -64,8 +64,8 @@ const CALLER_POOL = [...C.REGULARS.map((r) => ({ ...r, kind: 'regular' })), ...C
 const HEART_POOL = H.CAST;
 const byId = Object.fromEntries([...C.REGULARS, ...C.SPECIALS, ...C.PLANET, ...H.CAST, ...H.MINECRAFT, ...H.PLANET].map((c) => [c.id, c]));
 const talkMs = (ch) => (process.env.GEORGE_TALK_MS ? C.ECON.georgeTalkMs : (ch && ch.talkMs) || C.ECON.georgeTalkMs);
-const MAX_TRIES_CHOICE = 2; // wrong picks allowed before the patient gives up
-const MAX_TRIES_TEXT = 5;   // free-text attempts (AI mode)
+const MAX_TRIES_CHOICE = 2; // (multiple choice is no longer used)
+const MAX_NO_PROGRESS = 5;  // unhelpful messages before the patient gives up
 
 function newRoomCode() {
   for (let i = 0; i < 1000; i++) {
@@ -131,7 +131,8 @@ function meState(p) {
   return {
     id: p.id, name: p.name, isHost: p.isHost, isAdmin: p.isAdmin, money: p.money,
     flagged: p.flagged, mutedUntil: p.mutedUntil, call: publicCall(p.call), stats: p.stats,
-    endVote: p.endVote || null, voteBlocked: !!p.voteBlocked, endFeedback: p.endFeedback || null
+    endVote: p.endVote || null, voteBlocked: !!p.voteBlocked, endFeedback: p.endFeedback || null,
+    help: p.room ? helpState(p.room, p) : null, limits: p.limits || {}
   };
 }
 function syncMe(p) { emitPlayer(p, 'me', meState(p)); }
@@ -152,10 +153,8 @@ function publicCall(call) {
       stage: call.stage, world: call.world || null, tries: call.tries, removed: call.removed, reply: call.reply,
       chat: call.chat, aiOn: AI.aiEnabled(), maxTries: MAX_TRIES_CHOICE,
       fund: call.stage === 'talk' ? null : call.fund,
-      tasks: call.tasks, talk: call.talk,
-      file: call.stage === 'file' || status === 'done' ? sc.file : null,
-      q: call.stage === 'file' || status === 'done' ? sc.q : null,
-      choices: call.stage === 'file' || status === 'done' ? call.order.map((i) => ({ i, t: sc.o[i] })) : null
+      tasks: call.tasks, talk: call.talk, goal: sc.goal, need: sc.need, progress: call.covered.length, patience: MAX_NO_PROGRESS - call.noProgress,
+      file: call.stage === 'file' || status === 'done' ? sc.file : null
     });
   }
   return out;
@@ -174,19 +173,24 @@ function heartCall(call, ch, h) {
   call.sIdx = idxs[Math.floor(Math.random() * idxs.length)];
   if (h) h.used[ch.id].push(call.sIdx);
   call.stage = 'talk';
-  call.tasks = { greet: false, fund: false };
+  call.tasks = { greet: false, fund: false, file: false, goal: false };
   call.talk = [];
+  call.covered = []; call.noProgress = 0;
   call.fund = fundNumber();
   call.order = shuffle(ch.scenarios[call.sIdx].o.map((_, i) => i));
   call.tries = 0; call.removed = []; call.reply = null; call.chat = [];
   return call;
 }
 
+const FOREVER = Number.MAX_SAFE_INTEGER;
+function limited(p, ability) { const l = p.limits || {}; const t = now(); return (l[ability] || 0) > t || (l.all || 0) > t; }
+
 function scheduleCall(room, p, delayMs) {
   clearTimeout(p.callTimer);
   if (room.phase !== 'playing') return;
   p.callTimer = setTimeout(() => {
     if (room.phase !== 'playing' || !room.players.has(p.id) || p.call) return;
+    if (limited(p, 'calls')) return scheduleCall(room, p, 5000); // calls paused by the host
     p.call = rollCall(p, room);
     emitPlayer(p, 'call', publicCall(p.call));
   }, delayMs);
@@ -246,6 +250,7 @@ function finishCall(room, p, result) {
 
 function addMoney(room, p, amount) {
   p.money = Math.max(0, p.money + amount);
+  p.moneyChangedAt = now();
 }
 
 // Per-player game history (shown to managers, used for the podium)
@@ -272,7 +277,7 @@ function startGame(room) {
   emitRoom(room, 'room', roomState(room));
 }
 
-const END_STAGES = ['feedback', 'poll1', 'poll2', 'poll3', 'board', 'podium'];
+const END_STAGES = ['feedback', 'poll2', 'poll3', 'board', 'podium']; // character poll removed
 function realPlayers(room) { return [...room.players.values()].filter((p) => !p.bot); }
 
 function endGame(room) {
@@ -353,11 +358,23 @@ function enterStage(room, stage) {
     const top = realPlayers(room).sort((a, b) => b.money - a.money).slice(0, 3);
     E.podium = {
       startedAt: now(),
-      top: top.map((p) => ({ id: p.id, name: p.name, money: p.money, score: playerScore(p), achievements: achievementsOf(p), history: (p.log || []).slice(-4).map(({ he, en }) => ({ he, en })), note: null }))
+      top: top.map((p) => {
+        const st = p.stats; const solve = st.solveMs || [];
+        const avg = solve.length ? Math.round(solve.reduce((a, b) => a + b, 0) / solve.length / 1000) : null;
+        const tags = (p.log || []).map((l) => l.tag);
+        const stats = { answered: st.answered, correct: st.correct, accuracy: st.answered ? Math.round((100 * st.correct) / st.answered) : 0, hangups: st.hangups || 0, avgSolveSec: avg, worlds: tags.filter((x) => x === 'launch').length, special: (st.rare || []).length };
+        const auto = {
+          he: `${p.name} ענה/תה על ${stats.answered} שיחות ועזר/ה ל-${stats.correct} מטופלים (${stats.accuracy}%)${avg ? `, בממוצע ${avg} שניות מפתיחת התיק` : ''}${stats.worlds ? `, וביקר/ה ב-${stats.worlds} עולמות מיוחדים` : ''}.`,
+          en: `${p.name} answered ${stats.answered} calls and helped ${stats.correct} patients (${stats.accuracy}%)${avg ? `, ${avg}s on average from opening the file` : ''}${stats.worlds ? `, and visited ${stats.worlds} special worlds` : ''}.`
+        };
+        return { id: p.id, name: p.name, money: p.money, score: playerScore(p), achievements: achievementsOf(p), stats, feedback: p.endFeedback || null,
+          performance: (p.log || []).filter((l) => ['success', 'fail', 'hangup'].includes(l.tag)).slice(-6).map(({ he, en, delta }) => ({ he, en, delta })),
+          history: (p.log || []).slice(-4).map(({ he, en }) => ({ he, en })), summary: auto, byAI: false, note: null };
+      })
     };
     AI.podiumNotes(top.map((p) => ({ name: p.name, lines: (p.log || []).slice(-6).map((l) => l.en) }))).then((notes) => {
       if (!notes || !room.end || !room.end.podium) return;
-      room.end.podium.top.forEach((t, i) => { if (notes[i]) t.note = notes[i]; });
+      room.end.podium.top.forEach((t, i) => { if (notes[i]) { t.note = notes[i]; t.summary = notes[i]; t.byAI = true; } });
       broadcastState(room);
     });
   }
@@ -407,27 +424,43 @@ function removePlayer(room, target, reason) {
   room.banned.add(target.id);
   emitPlayer(target, 'kicked', { reason });
   for (const c of target.conns) { c.meta = null; setTimeout(() => c.close(4000), 200); }
-  const t = room.tickets.get(target.id);
-  if (t) { t.open = false; }
+  for (const t of room.tickets.values()) if (t.ownerId === target.id) t.open = false;
   emitAdmins(room, 'tickets', ticketList(room));
   broadcastState(room);
 }
 
 // ───────────────────────── help tickets ─────────────────────────
 function ticketList(room) {
-  return [...room.tickets.values()].filter((t) => t.open).sort((a, b) => b.updatedAt - a.updatedAt).map((t) => ({
-    id: t.id, playerName: room.players.get(t.id)?.name || t.playerName, summary: t.summary, aiAnswer: t.aiAnswer,
-    category: t.category, howTo: t.howTo, adminId: t.adminId, adminName: t.adminName,
-    updatedAt: t.updatedAt, count: t.messages.length, unread: t.unread
+  const all = [...room.tickets.values()];
+  const open = all.filter((t) => t.open).sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0) || (a.priority && b.priority ? a.priorityAt - b.priorityAt : b.updatedAt - a.updatedAt));
+  const done = all.filter((t) => !t.open).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);
+  return [...open, ...done].map((t) => ({
+    id: t.id, ownerId: t.ownerId, playerName: room.players.get(t.ownerId)?.name || t.playerName, summary: t.summary, aiAnswer: t.aiAnswer,
+    category: t.category, howTo: t.howTo, adminId: t.adminId, adminName: t.adminName, open: t.open, resolved: !!t.resolved,
+    priority: !!t.priority, updatedAt: t.updatedAt, count: t.messages.length, unread: t.unread
   }));
+}
+
+function botGeorge(text, extra) { return { id: rid(5), ts: now(), from: { id: 'botgeorge', name: 'BOTGEORGE', role: 'bot' }, text, ...(extra || {}) }; }
+function newTicket(room, p) {
+  const t = { id: 'tk' + rid(5), ownerId: p.id, playerName: p.name, messages: [], open: true, resolved: false, priority: false, adminId: null, adminName: null,
+    summary: '', aiAnswer: null, category: null, howTo: null, botReplies: 0, updatedAt: now(), unread: 0, lastTopic: null, lastVariant: null };
+  room.tickets.set(t.id, t); p.ticketId = t.id;
+  pushTicketMsg(room, t, botGeorge(L(p.lang, AI.BOT_FIRST.he, AI.BOT_FIRST.en), { first: true }));
+  return t;
+}
+function helpState(room, p) { const t = p.ticketId && room.tickets.get(p.ticketId); return t ? { ticketId: t.id, open: t.open, resolved: !!t.resolved, priority: !!t.priority, adminName: t.adminName } : null; }
+function playerContext(p) {
+  const c = p.call; if (!c) return { call: null, money: p.money };
+  return { call: c.kind === 'heart' ? { stage: c.stage, fund: c.stage !== 'talk' ? c.fund : null, tasks: c.tasks } : { kind: c.kind }, money: p.money };
 }
 
 function pushTicketMsg(room, ticket, msg) {
   ticket.messages.push(msg);
   if (ticket.messages.length > 200) ticket.messages.shift();
   ticket.updatedAt = now();
-  const owner = room.players.get(ticket.id);
-  if (owner) emitPlayer(owner, 'help', { ticketId: ticket.id, msg });
+  const owner = room.players.get(ticket.ownerId);
+  if (owner) { emitPlayer(owner, 'help', { ticketId: ticket.id, msg }); if (owner.ticketId === ticket.id) syncMe(owner); }
   for (const p of room.players.values()) if (p.isAdmin && p !== owner) emitPlayer(p, 'help', { ticketId: ticket.id, msg });
   emitAdmins(room, 'tickets', ticketList(room));
 }
@@ -449,7 +482,8 @@ const handlers = {
       }
     } catch (_) { /* keep */ }
     const joinUrl = `${origin}/?room=${code}`;
-    const mode = H.MODES.includes(d.mode) ? d.mode : 'mixed';
+    // the game is heart & blood-vessels only (the classic cast stays available to the automated test suite)
+    const mode = process.env.ALLOW_CLASSIC_MODE && d.mode === 'classic' ? 'classic' : 'heart';
     const room = {
       code, mode, phase: 'lobby', durationMin: duration, endsAt: null, createdAt: now(), hostId: null,
       joinUrl, qr: qrSvg(joinUrl), players: new Map(), banned: new Set(), reportedNames: new Set(),
@@ -555,6 +589,7 @@ const handlers = {
     const c = me.call;
     if (room.phase !== 'playing' || !c || c.id !== d.callId) return { error: 'no_call' };
     if (me.flagged) return { error: 'flagged' };
+    if (limited(me, 'calls')) return { error: 'limited' };
     if (c.status === 'ringing') { c.status = 'active'; c.pickedAt = now(); }
     emitPlayer(me, 'call', publicCall(c));
     return { ok: true };
@@ -618,88 +653,23 @@ const handlers = {
 
   // ─── heart edition: fund number → medical file → answer ───
   // The player writes first: own text or a ready-made message
-  'call:say'(conn, d, room, me) {
-    const c = me.call;
-    if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active') return { error: 'no_call' };
-    if (c.stage === 'file') return { error: 'bad_phase' };
-    let text = cleanText(d.text, 300);
-    if (d.presetId) { const pr = H.PRESETS.find((x) => x.id === d.presetId); if (!pr) return { error: 'bad_preset' }; text = L(me.lang, pr.he, pr.en); }
-    if (!text) return { error: 'empty' };
-    if (c.talk.length > 40) return { error: 'slow_down' };
-    const low = ' ' + text.toLowerCase() + ' ';
-    const greet = H.GREET_WORDS.some((w) => low.includes(w));
-    const fund = H.FUND_WORDS.some((w) => low.includes(w)) || (/מספר|number/.test(low) && /תיק|file|חולים/.test(low));
-    const ch = byId[c.charId];
-    c.talk.push({ who: 'player', text });
-    if (greet && !c.tasks.greet) c.tasks.greet = true;
-    // Patient answers plainly: first the problem, then the number when asked
-    const lines = [];
-    if (!c.problemSaid) { lines.push(ch.hello); c.problemSaid = true; }
-    if (fund && c.stage === 'talk') {
-      c.tasks.fund = true; c.stage = 'fund';
-      const f = H.PATIENT_LINES.fund; lines.push({ he: f.he.replace('{n}', c.fund), en: f.en.replace('{n}', c.fund) });
-    } else if (fund && c.stage === 'fund') {
-      const f = H.PATIENT_LINES.fund; lines.push({ he: f.he.replace('{n}', c.fund), en: f.en.replace('{n}', c.fund) });
-    } else if (!lines.length) {
-      lines.push(c.stage === 'fund' ? H.PATIENT_LINES.waiting : H.PATIENT_LINES.offer);
-    }
-    for (const l of lines) c.talk.push({ who: 'patient', he: l.he, en: l.en });
-    emitPlayer(me, 'call', publicCall(c));
-    return { ok: true, greet, fund };
-  },
+  'call:say'(conn, d, room, me) { return sayToPatient(room, me, d); },
 
   'mda:lookup'(conn, d, room, me) {
+    if (limited(me, 'mda')) return { error: 'limited' };
     const num = String(d.number || '').replace(/\D/g, '');
     const c = me.call;
     if (!num) return { error: 'no_file' };
     if (room.phase !== 'playing' || !c || c.kind !== 'heart' || c.status !== 'active' || c.stage === 'talk' || num !== c.fund) return { error: 'no_file' };
-    if (c.stage !== 'file') c.fileAt = now();
-    c.stage = 'file';
+    if (c.stage !== 'file') { c.fileAt = now(); c.talk.push({ who: 'patient', ...H.PATIENT_LINES.ready }); }
+    c.stage = 'file'; c.tasks.file = true;
     emitPlayer(me, 'call', publicCall(c));
     const ch = byId[c.charId];
-    return { ok: true, file: { name: ch.name, avatar: ch.avatar, fund: c.fund, card: ch.card || null, text: ch.scenarios[c.sIdx].file, q: ch.scenarios[c.sIdx].q } };
+    return { ok: true, file: { charId: ch.id, name: ch.name, avatar: ch.avatar, fund: c.fund, card: ch.card || null, text: ch.scenarios[c.sIdx].file, goal: ch.scenarios[c.sIdx].goal } };
   },
 
-  'call:choose'(conn, d, room, me) {
-    const c = me.call;
-    if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active' || c.stage !== 'file') return { error: 'no_call' };
-    const i = Number(d.option);
-    const ch = byId[c.charId]; const sc = ch.scenarios[c.sIdx];
-    if (!Number.isInteger(i) || i < 0 || i >= sc.o.length || c.removed.includes(i)) return { error: 'bad_option' };
-    if (i === sc.a) return heartSuccess(room, me, c, ch, sc);
-    if (c.fileAt && now() - c.fileAt < 2500) me.stats.quickWrong = (me.stats.quickWrong || 0) + 1;
-    c.tries++; c.removed.push(i); c.reply = sc.fail;
-    if (c.tries >= MAX_TRIES_CHOICE) return heartFail(room, me, c);
-    emitPlayer(me, 'call', publicCall(c));
-    return { ok: true, correct: false };
-  },
-
-  async 'call:reply'(conn, d, room, me) {
-    const c = me.call;
-    if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active' || c.stage !== 'file') return { error: 'no_call' };
-    if (!AI.aiEnabled()) return { error: 'ai_off' };
-    if (c.busy) return { error: 'slow_down' };
-    const text = cleanText(d.text, 400);
-    if (!text) return { error: 'empty' };
-    const ch = byId[c.charId]; const sc = ch.scenarios[c.sIdx]; const lang = me.lang;
-    c.busy = true;
-    c.chat.push({ who: 'player', text });
-    emitPlayer(me, 'call', publicCall(c));
-    const r = await AI.judgePatient({
-      rules: H.AI_RULES, character: L(lang, ch.name.he, ch.name.en), bio: L(lang, ch.bio.he, ch.bio.en),
-      file: L(lang, sc.file.he, sc.file.en), question: L(lang, sc.q.he, sc.q.en), correct: L(lang, sc.o[sc.a].he, sc.o[sc.a].en),
-      history: c.chat.slice(0, -1), text, lang
-    });
-    c.busy = false;
-    if (me.call !== c || c.status !== 'active') return { ok: true };
-    if (!r) { c.chat.pop(); emitPlayer(me, 'call', publicCall(c)); return { error: 'ai_failed' }; }
-    c.chat.push({ who: 'patient', text: r.reply });
-    if (r.success) return heartSuccess(room, me, c, ch, sc, r.reply);
-    c.tries++;
-    if (c.tries >= MAX_TRIES_TEXT) return heartFail(room, me, c);
-    emitPlayer(me, 'call', publicCall(c));
-    return { ok: true, correct: false };
-  },
+  'call:choose'() { return { error: 'bad_phase' }; }, // multiple choice removed
+  'call:reply'(conn, d, room, me) { return sayToPatient(room, me, d); },
 
   'call:hangup'(conn, d, room, me) {
     const c = me.call;
@@ -709,7 +679,7 @@ const handlers = {
 
   // ─── end of game: Polls & Feedback ───
   'end:feedback'(conn, d, room, me) {
-    if (room.phase !== 'over' || !room.end || !['feedback', 'poll1', 'poll2'].includes(room.end.stage)) return { error: 'bad_phase' };
+    if (room.phase !== 'over' || !room.end || !['feedback', 'poll2'].includes(room.end.stage)) return { error: 'bad_phase' };
     const rating = Math.round(Number(d.rating));
     if (!(rating >= 1 && rating <= 10)) return { error: 'bad_rating' };
     me.endFeedback = { rating, text: cleanText(d.text, 300) };
@@ -738,6 +708,44 @@ const handlers = {
     const i = END_STAGES.indexOf(E.stage);
     if (i < END_STAGES.length - 1) enterStage(room, END_STAGES[i + 1]);
     return { ok: true, stage: room.end.stage };
+  },
+
+  // client heartbeat: which app is open, and the money shown on screen (integrity check)
+  'client:beat'(conn, d, room, me) {
+    me.app = cleanText(d.app, 20) || null; me.visible = d.visible !== false;
+    if (typeof d.money === 'number' && d.money !== me.money && now() - (me.moneyChangedAt || 0) > 5000 && room.phase !== 'lobby')
+      flag(room, me, 'money', 'critical', { shown: d.money, real: me.money });
+    return { ok: true };
+  },
+
+  // ─── host: direct chat and timed restrictions ───
+  'dm:send'(conn, d, room, me) {
+    const text = cleanText(d.text, 300); if (!text) return { error: 'empty' };
+    room.dms = room.dms || new Map();
+    let pid;
+    if (me.isHost) { pid = d.targetId; if (!room.players.has(pid) || pid === me.id) return { error: 'not_found' }; }
+    else { pid = me.id; if (!room.dms.has(pid)) return { error: 'not_allowed' }; } // players can only reply
+    const list = room.dms.get(pid) || []; room.dms.set(pid, list);
+    const msg = userMsg(me, text); list.push(msg); if (list.length > 150) list.shift();
+    emitPlayer(room.players.get(pid), 'dm', { playerId: pid, msg });
+    const host = room.players.get(room.hostId); if (host) emitPlayer(host, 'dm', { playerId: pid, msg });
+    return { ok: true };
+  },
+
+  'admin:limit'(conn, d, room, me) {
+    if (!me.isHost) return { error: 'not_allowed' };
+    const t = room.players.get(d.targetId);
+    const ab = d.ability; const minutes = Number(d.minutes);
+    if (!t || t.isHost || !['calls', 'chat', 'mda', 'help', 'all'].includes(ab) || !Number.isFinite(minutes)) return { error: 'bad_option' };
+    t.limits = t.limits || {};
+    t.limits[ab] = minutes === 0 ? 0 : minutes < 0 ? FOREVER : now() + Math.min(600, minutes) * 60000;
+    const label = { calls: { he: 'שיחות', en: 'calls' }, chat: { he: 'צ\'אט', en: 'chat' }, mda: { he: 'מד"א', en: 'MDA' }, help: { he: 'עזרה', en: 'help' }, all: { he: 'הכל', en: 'everything' } }[ab];
+    const dur = minutes === 0 ? { he: 'הוסרה', en: 'removed' } : minutes < 0 ? { he: 'עד סוף המשחק', en: 'until the game ends' } : { he: `ל-${minutes} דק'`, en: `for ${minutes} min` };
+    logEvent(t, `המארח ${minutes === 0 ? 'הסיר הגבלה' : 'הגביל'}: ${label.he} ${dur.he}`, `Host ${minutes === 0 ? 'removed limit' : 'limited'}: ${label.en} ${dur.en}`, 0, 'admin');
+    if (minutes !== 0) flag(room, t, 'limit', 'info', { ability: ab, minutes });
+    if (ab === 'calls' || ab === 'all') { if (minutes !== 0 && t.call && t.call.status === 'ringing') { t.call = null; emitPlayer(t, 'call', null); } if (minutes === 0) scheduleCall(room, t, 2000); }
+    syncMe(t); broadcastState(room);
+    return { ok: true };
   },
 
   // ─── managers: money, history, suggestions ───
@@ -784,6 +792,7 @@ const handlers = {
     if (!text && !d.presetId) return { error: 'empty' };
     if (me.flagged) return { error: 'flagged' };
     if (channel === 'global' && me.mutedUntil > now()) return { error: 'muted', until: me.mutedUntil };
+    if ((channel === 'global' || channel === 'lb') && limited(me, 'chat')) return { error: 'limited' };
     if (now() - me.lastChatAt < 500) return { error: 'slow_down' };
     me.lastChatAt = now();
 
@@ -814,8 +823,9 @@ const handlers = {
     }
 
     if (channel === 'help') {
-      // Admin replying to a ticket
-      if (d.ticketId && me.isAdmin && d.ticketId !== me.id) {
+      if (limited(me, 'help')) return { error: 'limited' };
+      // Manager replying to a ticket
+      if (d.ticketId && me.isAdmin && room.tickets.get(d.ticketId)?.ownerId !== me.id) {
         const t = room.tickets.get(d.ticketId);
         if (!t || !t.open) return { error: 'no_ticket' };
         if (t.adminId && t.adminId !== me.id) return { error: 'claimed', by: t.adminName };
@@ -823,28 +833,60 @@ const handlers = {
         pushTicketMsg(room, t, userMsg(me, text));
         return { ok: true };
       }
-      // Player writing in their own help thread
-      let t = room.tickets.get(me.id);
-      if (!t || !t.open) {
-        const brief = AI.helpBrief(text, 'he');
-        const briefEn = AI.helpBrief(text, 'en');
-        t = {
-          id: me.id, playerName: me.name, messages: t ? t.messages : [], open: true, adminId: null, adminName: null,
-          summary: text.slice(0, 160), aiAnswer: null, category: { he: brief.category, en: briefEn.category },
-          howTo: { he: brief.howTo, en: briefEn.howTo }, botReplies: 0, updatedAt: now(), unread: 0
-        };
-        room.tickets.set(me.id, t);
-      }
+      // Player writing in their own ticket (a resolved ticket never reopens)
+      let t = me.ticketId && room.tickets.get(me.ticketId);
+      if (!t || !t.open) return { error: 'ticket_closed' };
       pushTicketMsg(room, t, userMsg(me, text));
+      if (!t.summary) {
+        t.summary = text.slice(0, 160);
+        const b1 = AI.helpBrief(text, 'he'), b2 = AI.helpBrief(text, 'en');
+        t.category = { he: b1.category, en: b2.category }; t.howTo = { he: b1.howTo, en: b2.howTo };
+      }
       if (!t.adminId) {
-        const reply = await AI.helpReply({ text, lang: me.lang, firstReply: t.botReplies === 0, playerName: me.name });
-        t.botReplies++;
-        if (!t.aiAnswer) t.aiAnswer = reply;
-        if (t.open) pushTicketMsg(room, t, botMsg(reply));
+        room.botLearn = room.botLearn || {};
+        const r = await AI.helpReply({ text, lang: me.lang, playerName: me.name, context: playerContext(me), memory: me.botMemory || [], learn: room.botLearn });
+        t.botReplies++; t.lastTopic = r.topicId; t.lastVariant = r.variant;
+        (me.botMemory || (me.botMemory = [])).push({ topicId: r.topicId, variant: r.variant, outcome: null, ts: now() });
+        if (me.botMemory.length > 20) me.botMemory.shift();
+        if (!t.aiAnswer) t.aiAnswer = r.text;
+        if (t.open) pushTicketMsg(room, t, botGeorge(r.text, { actions: true }));
       }
       return { ok: true };
     }
     return { error: 'bad_channel' };
+  },
+
+  'help:start'(conn, d, room, me) {
+    const t = me.ticketId && room.tickets.get(me.ticketId);
+    if (t && t.open) return { ok: true, ticketId: t.id };
+    const nt = newTicket(room, me);
+    syncMe(me);
+    return { ok: true, ticketId: nt.id, created: true };
+  },
+
+  'help:action'(conn, d, room, me) {
+    const t = me.ticketId && room.tickets.get(me.ticketId);
+    if (!t || !t.open) return { error: 'ticket_closed' };
+    const a = d.action;
+    if (!['manager', 'continue', 'helped'].includes(a)) return { error: 'bad_option' };
+    const line = AI.BOT_ACTION_LINES[a];
+    const mem = me.botMemory && me.botMemory[me.botMemory.length - 1];
+    if (a === 'manager') {
+      t.priority = true; t.priorityAt = now();
+      AI.learnOutcome(room.botLearn || {}, t.lastTopic, t.lastVariant, 'manager'); if (mem) mem.outcome = 'manager';
+      pushTicketMsg(room, t, botGeorge(L(me.lang, line.he, line.en)));
+      emitAdmins(room, 'help:priority', { ticketId: t.id, name: me.name });
+    } else if (a === 'continue') {
+      pushTicketMsg(room, t, botGeorge(L(me.lang, line.he, line.en)));
+    } else {
+      AI.learnOutcome(room.botLearn || {}, t.lastTopic, t.lastVariant, 'helped'); if (mem) mem.outcome = 'helped';
+      pushTicketMsg(room, t, botGeorge(L(me.lang, line.he, line.en)));
+      const m = sysMsg(''); m.event = { type: 'resolved' };
+      t.open = false; t.resolved = true; t.adminId = null;
+      pushTicketMsg(room, t, m);
+    }
+    syncMe(me);
+    return { ok: true };
   },
 
   'help:claim'(conn, d, room, me) {
@@ -867,11 +909,12 @@ const handlers = {
 
   'help:close'(conn, d, room, me) {
     const t = room.tickets.get(d.ticketId);
-    if (!t || !(me.isAdmin || t.id === me.id)) return { error: 'not_allowed' };
+    if (!t || !t.open || !(me.isAdmin || t.ownerId === me.id)) return { error: 'not_allowed' };
     const m = sysMsg(''); m.event = { type: 'closed', name: me.name };
     pushTicketMsg(room, t, m);
     t.open = false; t.adminId = null;
     emitAdmins(room, 'tickets', ticketList(room));
+    const owner = room.players.get(t.ownerId); if (owner) syncMe(owner);
     return { ok: true };
   },
 
@@ -909,10 +952,139 @@ if (process.env.TEST_HOOKS) {
   };
 }
 
+// ───────── anti-cheat monitor → "Notes" chat for managers ─────────
+const NOTE_TEXT = {
+  privilege: { he: 'ניסיון לבצע פעולת ניהול בלי הרשאה', en: 'Tried a manager action without permission' },
+  tamper: { he: 'בקשות לא חוקיות לשרת (שינוי רכיבים במשחק / צ\'יט)', en: 'Invalid requests to the server (game tampering / cheat)' },
+  money: { he: 'הכסף שמוצג אצל השחקן שונה מהכסף האמיתי — ניסיון להעלות כסף בלי הרשאה', en: 'Money shown on the player\'s screen differs from the real amount — unauthorized money change' },
+  flood: { he: 'הצפת בקשות (בוט או סקריפט)', en: 'Request flood (bot or script)' },
+  speed: { he: 'פתר משימה מהר מדי (פחות משנייה וחצי אחרי פתיחת התיק)', en: 'Solved a task impossibly fast (under 1.5 s after opening the file)' },
+  idle: { he: 'השחקן לא פעיל כבר יותר מ-2 דקות', en: 'Player inactive for over 2 minutes' },
+  limit: { he: 'המארח הגביל את השחקן', en: 'The host restricted this player' },
+  double_vote: { he: 'הצבעה כפולה בסקר (בוט)', en: 'Double vote in a poll (bot)' }
+};
+function snapshot(room, p) {
+  const b = board(room); const rank = b.findIndex((x) => x.id === p.id) + 1;
+  const c = p.call; const ch = c && byId[c.charId];
+  return {
+    money: p.money, rank, of: b.length, connected: p.conns.size > 0, app: p.app || null, visible: p.visible !== false,
+    idleSec: Math.round((now() - (p.lastAction || p.joinedAt)) / 1000),
+    call: c ? { char: ch ? ch.name : null, status: c.status, stage: c.stage || null } : null,
+    stats: { answered: p.stats?.answered || 0, correct: p.stats?.correct || 0, hangups: p.stats?.hangups || 0 }, limits: p.limits || {}
+  };
+}
+function flag(room, p, kind, severity, details) {
+  if (!room || !p || p.isHost && kind !== 'money') return;
+  room.notes = room.notes || [];
+  const last = room.notes.findLast ? room.notes.findLast((n) => n.playerId === p.id && n.kind === kind) : [...room.notes].reverse().find((n) => n.playerId === p.id && n.kind === kind);
+  if (last && now() - last.ts < 30000) {
+    last.count++; last.ts = now(); last.snapshot = snapshot(room, p); last.details = details || last.details;
+    emitAdmins(room, 'note', last); return;
+  }
+  const note = { id: rid(5), ts: now(), kind, severity, playerId: p.id, name: p.name, text: NOTE_TEXT[kind] || { he: kind, en: kind }, details: details || null, count: 1, snapshot: snapshot(room, p) };
+  room.notes.push(note); if (room.notes.length > 150) room.notes.shift();
+  emitAdmins(room, 'note', note);
+}
+const ADMIN_ONLY = new Set(['lobby:kick', 'lobby:report', 'lobby:promote', 'game:start', 'game:lobby', 'game:end', 'mod:mute', 'mod:kick', 'admin:adjust', 'admin:history', 'admin:suggest', 'admin:limit', 'end:next', 'help:claim']);
+function watchRequest(room, me, type, d, result) {
+  if (!room || !me) return;
+  const t = now();
+  if (type !== 'client:beat') me.lastAction = t;
+  me.reqTimes = (me.reqTimes || []).filter((x) => t - x < 2000); me.reqTimes.push(t);
+  if (me.reqTimes.length > 30) flag(room, me, 'flood', 'warning', { perSec: Math.round(me.reqTimes.length / 2) });
+  if (result && result.error === 'unknown') flag(room, me, 'tamper', 'critical', { type: String(type).slice(0, 40) });
+  if (result && result.error === 'not_allowed' && ADMIN_ONLY.has(type) && !me.isAdmin) flag(room, me, 'privilege', 'critical', { action: type });
+  if (result && result.error === 'no_call' && d && d.callId && me.call && d.callId !== me.call.id) {
+    me.badCalls = (me.badCalls || []).filter((x) => t - x < 20000); me.badCalls.push(t);
+    if (me.badCalls.length > 4) flag(room, me, 'tamper', 'warning', { badCallIds: me.badCalls.length });
+  }
+  if (result && result.error === 'double_vote') flag(room, me, 'double_vote', 'warning', null);
+}
+// Idle players during a game
+setInterval(() => {
+  for (const room of rooms.values()) {
+    if (room.phase !== 'playing') continue;
+    for (const p of room.players.values()) {
+      if (p.bot || p.isHost || !p.conns.size) continue;
+      const idle = now() - (p.lastAction || room.startedAt || p.joinedAt);
+      if (idle > 120000 && (!p.idleFlaggedAt || now() - p.idleFlaggedAt > 300000)) { p.idleFlaggedAt = now(); flag(room, p, 'idle', 'info', { idleSec: Math.round(idle / 1000) }); }
+    }
+  }
+}, 15000).unref();
+
+// ───────── free chat with the patient ─────────
+const lc = (x) => ' ' + String(x).toLowerCase().replace(/[׳']/g, "'") + ' ';
+function ruleJudge(c, sc, text) {
+  const low = lc(text); let gained = 0;
+  sc.keys.forEach((grp, i) => { if (!c.covered.includes(i) && grp.some((w) => low.includes(String(w).toLowerCase()))) { c.covered.push(i); gained++; } });
+  return { success: c.covered.length >= sc.need, gained };
+}
+
+async function sayToPatient(room, me, d) {
+  if (limited(me, 'calls')) return { error: 'limited' };
+  const c = me.call;
+  if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active') return { error: 'no_call' };
+  if (c.busy) return { error: 'slow_down' };
+  let text = cleanText(d.text, 300);
+  if (d.presetId) { const pr = H.PRESETS.find((x) => x.id === d.presetId); if (!pr) return { error: 'bad_preset' }; text = L(me.lang, pr.he, pr.en); }
+  if (!text) return { error: 'empty' };
+  if (c.talk.length > 80) return { error: 'slow_down' };
+  const ch = byId[c.charId]; const sc = ch.scenarios[c.sIdx];
+  const low = lc(text);
+  const greet = H.GREET_WORDS.some((w) => low.includes(w));
+  const fund = H.FUND_WORDS.some((w) => low.includes(w)) || (/מספר|number/.test(low) && /תיק|file|חולים/.test(low));
+  c.talk.push({ who: 'player', text });
+  if (greet && !c.tasks.greet) c.tasks.greet = true;
+  const say = (l) => c.talk.push({ who: 'patient', he: l.he, en: l.en });
+  const fundLine = () => { const f = H.PATIENT_LINES.fund; say({ he: f.he.replace('{n}', c.fund), en: f.en.replace('{n}', c.fund) }); };
+
+  if (c.stage !== 'file') {
+    // Before the file is open the patient states the problem plainly and gives the number when asked
+    let said = false;
+    if (!c.problemSaid) { say(ch.hello); c.problemSaid = true; said = true; }
+    if (fund) { if (c.stage === 'talk') { c.tasks.fund = true; c.stage = 'fund'; } fundLine(); said = true; }
+    if (!said) say(c.stage === 'fund' ? H.PATIENT_LINES.waiting : H.PATIENT_LINES.offer);
+    emitPlayer(me, 'call', publicCall(c));
+    return { ok: true, greet, fund };
+  }
+
+  // File open: judge the player's guidance (AI when a key is set, otherwise the case rules)
+  let result = null;
+  if (AI.aiEnabled()) {
+    c.busy = true; emitPlayer(me, 'call', publicCall(c));
+    const r = await AI.judgePatient({
+      rules: H.AI_RULES, character: L(me.lang, ch.name.he, ch.name.en), bio: L(me.lang, ch.bio.he, ch.bio.en),
+      file: L(me.lang, sc.file.he, sc.file.en), question: L(me.lang, sc.goal.he, sc.goal.en),
+      correct: sc.keys.map((g) => g.slice(0, 4).join('/')).join('; ') + ` (at least ${sc.need} of these ideas)`,
+      history: c.talk.slice(0, -1).map((m) => ({ who: m.who, text: m.text || L(me.lang, m.he, m.en) })), text, lang: me.lang
+    });
+    c.busy = false;
+    if (me.call !== c || c.status !== 'active') return { ok: true };
+    if (r) { ruleJudge(c, sc, text); result = { success: r.success, gained: r.success ? 1 : 0, reply: r.reply }; }
+  }
+  if (!result) result = ruleJudge(c, sc, text);
+  if (result.success) {
+    c.tasks.goal = true;
+    if (result.reply) say({ he: result.reply, en: result.reply });
+    if (c.fileAt) (me.stats.solveMs || (me.stats.solveMs = [])).push(now() - c.fileAt);
+    if (c.fileAt && now() - c.fileAt < 1200) flag(room, me, 'speed', 'warning', { ms: now() - c.fileAt });
+    return heartSuccess(room, me, c, ch, sc, result.reply);
+  }
+  if (result.gained) say(result.reply ? { he: result.reply, en: result.reply } : H.PARTIAL[(c.covered.length - 1) % H.PARTIAL.length]);
+  else {
+    c.noProgress++;
+    if (c.noProgress >= MAX_NO_PROGRESS) return heartFail(room, me, c);
+    say(result.reply ? { he: result.reply, en: result.reply } : c.noProgress % 2 ? sc.fail : H.LOST[(c.noProgress >> 1) % H.LOST.length]);
+  }
+  emitPlayer(me, 'call', publicCall(c));
+  return { ok: true, correct: false };
+}
+
 function heartSuccess(room, me, c, ch, sc, aiReply) {
   addMoney(room, me, ch.reward);
-  logEvent(me, `עזר/ה ל${ch.name.he}${c.world === 'planet' ? ' בכוכב ג\'ורג\'' : c.world === 'minecraft' ? ' בעולם המיינקראפט' : ''} — ${(c.tasks && c.tasks.greet) ? 'בירך/ה, ' : ''}ביקש/ה מספר קופה, בדק/ה תיק וענה/תה נכון`,
-    `Helped ${ch.name.en}${c.world === 'planet' ? ' on Planet George' : c.world === 'minecraft' ? ' in the Minecraft world' : ''} — ${(c.tasks && c.tasks.greet) ? 'greeted, ' : ''}asked for the fund number, checked the file and answered correctly`, ch.reward, 'success');
+  const secs = c.fileAt ? Math.round((now() - c.fileAt) / 1000) : 0;
+  logEvent(me, `עזר/ה ל${ch.name.he}${c.world === 'planet' ? ' בכוכב ג\'ורג\'' : c.world === 'minecraft' ? ' בעולם המיינקראפט' : ''} — ${(c.tasks && c.tasks.greet) ? 'בירך/ה, ' : ''}בדק/ה את התיק והשלים/ה את המשימה תוך ${secs} שניות`,
+    `Helped ${ch.name.en}${c.world === 'planet' ? ' on Planet George' : c.world === 'minecraft' ? ' in the Minecraft world' : ''} — ${(c.tasks && c.tasks.greet) ? 'greeted, ' : ''}checked the file and completed the task in ${secs}s`, ch.reward, 'success');
   me.stats.answered++; me.stats.correct++;
   if (ch.booster || c.world || ['epic', 'legendary'].includes(ch.rarity)) me.stats.rare.push(ch.id);
   finishCall(room, me, { kind: 'heart', correct: true, delta: ch.reward, ok: sc.ok, aiReply: aiReply || null, booster: !!ch.booster, world: c.world || null });
@@ -927,8 +1099,8 @@ function heartFail(room, me, c, hungUp) {
   me.stats.answered++;
   if (hungUp) me.stats.hangups = (me.stats.hangups || 0) + 1;
   const ch = byId[c.charId];
-  logEvent(me, hungUp ? `ניתק/ה את השיחה עם ${ch.name.he}` : `לא הצליח/ה לעזור ל${ch.name.he} (${c.tries} תשובות שגויות)`,
-    hungUp ? `Hung up on ${ch.name.en}` : `Couldn't help ${ch.name.en} (${c.tries} wrong answers)`, 0, hungUp ? 'hangup' : 'fail');
+  logEvent(me, hungUp ? `ניתק/ה את השיחה עם ${ch.name.he}` : `לא הצליח/ה לעזור ל${ch.name.he} (${c.noProgress} הודעות לא מועילות)`,
+    hungUp ? `Hung up on ${ch.name.en}` : `Couldn't help ${ch.name.en} (${c.noProgress} unhelpful messages)`, 0, hungUp ? 'hangup' : 'fail');
   finishCall(room, me, { kind: 'heart', correct: false, delta: 0, hungUp: !!hungUp, world: c.world || null });
   return { ok: true, correct: false };
 }
@@ -941,6 +1113,7 @@ function claimTicket(room, t, admin) {
 
 function attach(conn, room, p) {
   if (conn.meta) detach(conn);
+  p.room = room;
   conn.meta = { code: room.code, playerId: p.id };
   p.conns.add(conn);
   p.lastSeen = now();
@@ -955,9 +1128,11 @@ function historyFor(room, p) {
   return {
     global: room.global.slice(-80),
     lb: room.lb.get(p.id) || [],
-    help: room.tickets.get(p.id)?.messages || [],
+    help: (p.ticketId && room.tickets.get(p.ticketId)?.messages) || [],
+    notes: p.isAdmin ? (room.notes || []).slice(-60) : null,
+    dms: p.isHost ? Object.fromEntries([...(room.dms || new Map())].map(([k, v]) => [k, v.slice(-80)])) : (room.dms && room.dms.get(p.id) ? { [p.id]: room.dms.get(p.id).slice(-80) } : {}),
     tickets: p.isAdmin ? ticketList(room) : null,
-    ticketMsgs: p.isAdmin ? Object.fromEntries([...room.tickets.values()].filter((t) => t.open).map((t) => [t.id, t.messages])) : null
+    ticketMsgs: p.isAdmin ? Object.fromEntries([...room.tickets.values()].map((t) => [t.id, t.messages])) : null
   };
 }
 
@@ -1050,6 +1225,7 @@ attachWebSocketServer(server, '/ws', (conn) => {
       console.error('handler error', msg.t, e);
       result = { error: 'server_error' };
     }
+    try { const room = conn.meta && rooms.get(conn.meta.code); watchRequest(room, room && room.players.get(conn.meta.playerId), msg.t, msg.d, result); } catch (_) {}
     if (msg.rid) conn.send(JSON.stringify({ t: 'ack', rid: msg.rid, d: result }));
   });
   conn.on('close', () => detach(conn));
