@@ -172,7 +172,7 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓',
 
   ok((await host.req('game:end', {})).ok, 'host ends game');
   const over = await a.wait((m) => m.t === 'room' && m.d.phase === 'over');
-  ok(over.end && over.end.stage === 'board' && !over.end.stages.includes('feedback'), 'no polls: everyone moves straight to the leaderboard');
+  ok(over.end && over.end.stage === 'feedback' && over.end.stages.join() === 'feedback,results,board,podium', 'when calls stop the Feedback app opens (feedback → results → leaderboard)');
   ok((await host.req('game:lobby', {})).ok, 'back to lobby');
 
   console.log(`\nAll ${passed} checks passed.`);

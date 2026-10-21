@@ -69,7 +69,7 @@
     if (!Net.session || !S.room) return renderHome();
     const phase = S.room.phase;
     if (phase === 'lobby') renderLobby(force);
-    else if (phase === 'over' && S.room.end && (S.pollsOpen || S.me?.isHost || S.room.end.stage === 'podium' || (S.room.end.revealed || []).length > 0)) renderEnd(force);
+    else if (phase === 'over' && S.room.end && true /* the Feedback app opens for everyone when calls stop */) renderEnd(force);
     else renderDesktop(force);
     renderOverlays();
   }
@@ -373,10 +373,15 @@
     if (S.view !== 'desktop' || !S.me) return;
     const mEl = $('#tb-money');
     const m = S.me.money || 0;
-    if (mEl.textContent !== money(m)) {
-      mEl.textContent = money(m);
-      if (m > S.lastMoney) { mEl.classList.remove('bump'); void mEl.offsetWidth; mEl.classList.add('bump'); }
-      S.lastMoney = m;
+    if (S.moneyTarget !== m) {
+      const from = S.lastMoney == null ? m : S.lastMoney; S.moneyTarget = m; S.lastMoney = m;
+      if (m > from) {
+        // live count-up so the player sees the balance rise
+        mEl.classList.remove('bump'); void mEl.offsetWidth; mEl.classList.add('bump', 'rising');
+        const t0 = performance.now(), dur = 1400;
+        const step = (tt) => { if (S.moneyTarget !== m) return; const k = Math.min(1, (tt - t0) / dur); mEl.textContent = money(Math.round(from + (m - from) * (1 - Math.pow(1 - k, 3)))); if (k < 1) requestAnimationFrame(step); else mEl.classList.remove('rising'); };
+        requestAnimationFrame(step);
+      } else mEl.textContent = money(m);
     }
     $('#tb-rank').textContent = '#' + myRank();
     $('#tb-name').textContent = S.me.name;
@@ -477,7 +482,9 @@
   function renderTasks(body) {
     if (!body) { const w = S.wins.tasks; if (!w || !w.el) return; body = w.body; }
     const c = S.call; const live = c && c.kind === 'heart' && c.status !== 'ringing';
+    const fin = live && c.tasks && c.tasks.goal;
     body.innerHTML = `<div class="tasks-app"><div class="dim" style="font-size:.85rem;margin-bottom:8px">${live ? esc(tc(charOf(c).name)) : t('tasks_none')}</div>
+      ${fin ? `<div class="big-done" role="status"><div class="bigv">✔</div><b>${t('tasks_done_big')}</b></div>` : ''}
       <ul class="task-list">${tasksHtml(live ? c : null)}</ul></div>`;
   }
 
@@ -685,7 +692,7 @@
       if (res.correct) {
         const lastP = (c.talk || []).filter((m) => m.who === 'patient').pop();
         html += `<div class="line patient-reply thanks-line">💬 ${esc(lastP ? tc(lastP) : t('thanks_line'))}</div>
-          <div class="result good">${t('heart_saved')}</div><div class="delta plus">+${money(res.delta)}</div>${tag(res.delta, res.booster)}`;
+          <div class="call-ended">☎ ${t('call_ended')}</div><div class="result good">${t('heart_saved')}</div><div class="delta plus">+${money(res.delta)}</div>${tag(res.delta, res.booster)}`;
       } else {
         html += `<div class="result bad">${res.hungUp ? t('heart_hung') : t('heart_failed')}</div><div class="dim">${t('heart_no_reward')}</div>`;
       }
@@ -693,14 +700,16 @@
       stage.innerHTML = html;
       return;
     }
-    html += `<ul class="task-list inline">${tasksHtml(c)}</ul>`;
+    // Inside the call only the tip is shown; the tasks themselves live in the Tasks app
+    const tipKey = c.closing ? 'tip_closing' : c.stage === 'talk' ? 'tip_talk' : c.stage === 'fund' ? 'tip_fund' : 'tip_file';
+    html += `<div class="call-tip ${c.closing ? 'done' : ''}"><span>💡 ${t(tipKey)}</span>${c.closing ? '' : `<button class="btn small" data-open-tasks>☑ ${t('open_tasks')}</button>`}</div>`;
     const lim = limitUntil('calls');
     if (lim) { stage.innerHTML = html + `<div class="muted-note">⛔ ${limitText(lim)}</div>`; return; }
     html += `<div class="talk">${c.talk.length ? c.talk.map(talkLine).join('') : `<div class="dim talk-empty">${t('you_write_first')}</div>`}</div>`;
     if (c.stage === 'file') html += `<div class="file-mini"><b>📁 ${t('file_problem')}:</b> ${esc(tc(c.file))}</div>`;
     const presets = c.stage === 'file' ? [] : HT.PRESETS.filter((pr) => !c.tasks[pr.task]);
     html += `${presets.length ? `<div class="presets talk-presets">${presets.map((pr) => `<button class="preset" data-pr="${pr.id}">${esc(tc(pr))}</button>`).join('')}</div>` : ''}
-      <form class="composer" id="h-say" style="border:none;padding:6px 0 0;width:100%;max-width:560px"><input class="input" id="h-say-in" maxlength="300" placeholder="${c.stage === 'file' ? t('guide_ph') : t('say_ph')}" autocomplete="off"><button class="btn primary">${t('send')}</button></form>`;
+      <form class="composer" id="h-say" style="border:none;padding:6px 0 0;width:100%;max-width:560px"><input class="input" id="h-say-in" maxlength="300" placeholder="${c.closing ? t('tip_closing') : c.stage === 'file' ? t('guide_ph') : t('say_ph')}" autocomplete="off" ${c.closing ? 'disabled' : ''}><button class="btn primary" ${c.closing ? 'disabled' : ''}>${t('send')}</button></form>`;
     if (c.stage === 'fund') html += `<div class="fund-box"><span>${t('fund_number')}:</span> <b class="mono fund-no">${esc(c.fund)}</b></div>
         <button class="btn info big" id="h-mda">✚ ${t('open_mda_file')}</button>`;
     if (c.stage === 'file') html += `<div class="dim" style="font-size:.8rem;margin-top:4px">${t('patience_left', { n: Math.max(0, c.patience) })} · ${t('reward')}: ${money(ch.reward)}</div>`;
@@ -712,6 +721,7 @@
       const inp = $('#h-say-in'); if (window.innerWidth > 760) setTimeout(() => inp.focus(), 30);
       sf.onsubmit = async (e) => { e.preventDefault(); const text = inp.value.trim(); if (!text) return; inp.disabled = true; const r = await say({ text }); if (r.error) inp.disabled = false; };
     }
+    const ot = $('[data-open-tasks]', stage); if (ot) ot.onclick = () => { sfx('open'); openWin('tasks'); };
     const mda = $('#h-mda'); if (mda) mda.onclick = () => { S.mdaTab = 'file'; S.mdaFile = null; openWin('mda'); renderMda(); };
     $$('[data-o]', stage).forEach((b) => b.onclick = async () => {
       $$('[data-o]', stage).forEach((x) => (x.disabled = true));
@@ -1101,7 +1111,7 @@
   }
 
   // ───────────────────────── end of game: Polls & Feedback ─────────────────────────
-  const STAGE_LABEL = { feedback: 'st_feedback', poll1: 'st_poll1', poll2: 'st_poll2', poll3: 'st_poll3', board: 'st_board', podium: 'st_podium' };
+  const STAGE_LABEL = { results: 'st_results', feedback: 'st_feedback', poll1: 'st_poll1', poll2: 'st_poll2', poll3: 'st_poll3', board: 'st_board', podium: 'st_podium' };
   function renderEnd(force) {
     const E = S.room.end; const me = S.me || {};
     // personal bits are part of the key so votes/feedback re-render
@@ -1116,6 +1126,7 @@
     let body = '';
     if (E.stage === 'feedback') body = endFeedback(E, me);
     else if (E.stage === 'poll1') body = endPoll1(E, me);
+    else if (E.stage === 'results') body = endResults(E);
     else if (E.stage === 'poll2') body = endPoll2(E);
     else if (E.stage === 'poll3') body = endPoll3(E);
     else if (E.stage === 'board') body = endBoard(E, me);
@@ -1167,6 +1178,18 @@
       <div class="score-hero"><span class="mono">${P.score.toFixed(1)}</span><small>/10 · ${t('poll3_weighted', { n: P.count })}</small></div>
       <p class="summary-line">${P.byAI ? '🤖 ' + t('ai_summary') : t('auto_summary')}: ${esc(tc(P.summary))}</p>
       <div class="reviews">${P.reviews.length ? P.reviews.map((r) => `<figure class="review"><div class="rscore mono">${r.rating}/10</div><blockquote>${r.text ? esc(r.text) : `<span class="dim">${t('no_text')}</span>`}</blockquote><figcaption>— ${esc(r.name)}</figcaption></figure>`).join('') : `<p class="dim">${t('no_reviews')}</p>`}</div></div>`;
+  }
+  function endResults(E) {
+    const P2 = E.poll2 || { pct: 0, success: 0, total: 0 };
+    const P3 = E.poll3 || { reviews: [], score: 0, count: 0, summary: { he: '', en: '' } };
+    return `<div class="end-card wide results"><h2>🤖 ${t('results_title')}</h2>
+      <div class="res-row">
+        <div class="res-box"><small>${t('results_avg')}</small><span class="mono big">${P3.count ? P3.score.toFixed(1) : '—'}</span><em>/10 · ${t('poll3_weighted', { n: P3.count })}</em></div>
+        <div class="res-box"><small>${t('results_learn')}</small><span class="mono big">${P2.pct}%</span><em>${t('results_learn_sub', { a: P2.success, b: P2.total })}</em><div class="vbar"><div class="vtrack"><i style="width:${P2.pct}%"></i></div></div></div>
+      </div>
+      <p class="summary-line">${P3.byAI ? '🤖 ' + t('ai_summary') : t('auto_summary')}: ${esc(tc(P3.summary))}</p>
+      <h3 class="res-h">${t('results_reviews')}</h3>
+      <div class="reviews">${P3.reviews.length ? P3.reviews.map((r) => `<figure class="review"><div class="rscore mono">${r.rating}/10</div><blockquote>${r.text ? esc(r.text) : `<span class="dim">${t('no_text')}</span>`}</blockquote><figcaption>— ${esc(r.name)}</figcaption></figure>`).join('') : `<p class="dim">${t('no_reviews')}</p>`}</div></div>`;
   }
   function endBoard(E, me) {
     const B = E.board || { revealed: [], hidden: [] };

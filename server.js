@@ -143,6 +143,7 @@ function userMsg(p, text) { return { id: rid(5), ts: now(), from: { id: p.id, na
 
 // ───────────────────────── calls ─────────────────────────
 function publicCall(call) {
+  // (closing = patient already thanked; money follows)
   if (!call) return null;
   const { id, kind, charId, scenario, options, status, pickedAt, result, createdAt } = call;
   const out = { id, kind, charId, scenario, options, status, pickedAt, result, createdAt };
@@ -153,7 +154,7 @@ function publicCall(call) {
       stage: call.stage, world: call.world || null, tries: call.tries, removed: call.removed, reply: call.reply,
       chat: call.chat, aiOn: AI.aiEnabled(), maxTries: MAX_TRIES_CHOICE,
       fund: call.stage === 'talk' ? null : call.fund,
-      tasks: call.tasks, talk: call.talk, goal: sc.goal, need: sc.need, progress: call.covered.length, patience: MAX_NO_PROGRESS - call.noProgress,
+      tasks: call.tasks, closing: !!call.closing, talk: call.talk, goal: sc.goal, need: sc.need, progress: call.covered.length, patience: MAX_NO_PROGRESS - call.noProgress,
       file: call.stage === 'file' || status === 'done' ? sc.file : null,
       ask: (call.stage === 'file' || status === 'done') && sc.ask ? sc.ask.task : null
     });
@@ -278,20 +279,20 @@ function startGame(room) {
   emitRoom(room, 'room', roomState(room));
 }
 
-const END_STAGES = ['board', 'podium']; // all polls and feedback removed
+const END_STAGES = ['feedback', 'results', 'board', 'podium'];
+const CLOSE_MS = Number(process.env.CLOSE_MS) || 2800;
 function realPlayers(room) { return [...room.players.values()].filter((p) => !p.bot); }
 
 function endGame(room) {
   if (room.phase !== 'playing') return;
   room.phase = 'over';
-  room.end = { stage: 'board', poll2: null, poll3: null, order: [], revealed: [], podium: null };
-  enterStage(room, 'board');
+  room.end = { stage: 'feedback', poll2: null, poll3: null, order: [], revealed: [], podium: null };
   for (const p of room.players.values()) {
     clearTimeout(p.callTimer); p.call = null;
     p.endVote = null; p.voteBlocked = false; p.endFeedback = null;
     syncMe(p);
   }
-  // Calls and MDA lock; the global chat gets a link to the leaderboard
+  // Calls and MDA lock; the Feedback app opens (and the global chat gets a link to it)
   const m = sysMsg(''); m.event = { type: 'polls' };
   room.global.push(m); emitRoom(room, 'chat', { channel: 'global', msg: m });
   emitRoom(room, 'room', roomState(room));
@@ -315,10 +316,8 @@ function computePoll2(room) {
 
 function computePoll3(room) {
   const all = realPlayers(room).filter((p) => p.endFeedback).map((p) => ({ name: p.name, rating: p.endFeedback.rating, text: p.endFeedback.text }));
-  const pick = [...all].sort((a, b) => b.text.length - a.text.length).slice(0, 8);
-  let wsum = 0, sum = 0;
-  for (const r of all) { const w = 1 + Math.min(1, r.text.length / 80); wsum += w; sum += r.rating * w; }
-  const score = wsum ? Math.round((sum / wsum) * 10) / 10 : 0;
+  const pick = shuffle([...all]).slice(0, 8); // 8 random reviews
+  const score = all.length ? Math.round((all.reduce((a, r) => a + r.rating, 0) / all.length) * 10) / 10 : 0; // plain average 1–10
   const summary = score >= 8 ? { he: 'רוב השחקנים נהנו מאוד מהמשחק ומצאו אותו מלמד.', en: 'Most players really enjoyed the game and found it educational.' }
     : score >= 6 ? { he: 'השחקנים נהנו ברובם, והשאירו כמה הצעות לשיפור.', en: 'Players mostly enjoyed it and left a few ideas for improvement.' }
     : all.length ? { he: 'המשוב מעורב — כדאי לקרוא את ההערות ולשפר.', en: 'Feedback is mixed — worth reading the comments and improving.' }
@@ -346,12 +345,12 @@ function achievementsOf(p) {
 
 function enterStage(room, stage) {
   const E = room.end; E.stage = stage;
-  if (stage === 'poll2') E.poll2 = computePoll2(room);
-  if (stage === 'poll3') {
+  if (stage === 'results') {
+    E.poll2 = computePoll2(room);
     E.poll3 = computePoll3(room);
     AI.summarizeFeedback(E.poll3._all).then((r) => {
       if (!r || !room.end || !room.end.poll3) return;
-      Object.assign(room.end.poll3, { score: r.score, summary: { he: r.he, en: r.en || r.he }, byAI: true });
+      Object.assign(room.end.poll3, { summary: { he: r.he, en: r.en || r.he }, byAI: true }); // the score stays the real average
       broadcastState(room);
     });
   }
@@ -693,7 +692,7 @@ const handlers = {
 
   // ─── end of game: Polls & Feedback ───
   'end:feedback'(conn, d, room, me) {
-    if (room.phase !== 'over' || !room.end || !['feedback', 'poll2'].includes(room.end.stage)) return { error: 'bad_phase' };
+    if (room.phase !== 'over' || !room.end || room.end.stage !== 'feedback') return { error: 'bad_phase' };
     const rating = Math.round(Number(d.rating));
     if (!(rating >= 1 && rating <= 10)) return { error: 'bad_rating' };
     me.endFeedback = { rating, text: cleanText(d.text, 300) };
@@ -1038,7 +1037,7 @@ async function sayToPatient(room, me, d) {
   if (limited(me, 'calls')) return { error: 'limited' };
   const c = me.call;
   if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active') return { error: 'no_call' };
-  if (c.busy) return { error: 'slow_down' };
+  if (c.busy || c.closing) return { error: 'slow_down' };
   let text = cleanText(d.text, 300);
   if (d.presetId && c.stage === 'file') return { error: 'type_yourself' };
   if (d.presetId) { const pr = H.PRESETS.find((x) => x.id === d.presetId); if (!pr) return { error: 'bad_preset' }; text = L(me.lang, pr.he, pr.en); }
@@ -1083,14 +1082,15 @@ async function sayToPatient(room, me, d) {
   const judged = ruleJudge(c, sc, text);
   const goalMet = aiSuccess === null ? judged.success : (aiSuccess || judged.success);
   if (goalMet && askDone()) {
-    // Money only once the patient writes "thanks for the help!"
-    c.tasks.goal = true;
-    const th = H.PATIENT_LINES.thanks;
-    const extra = aiSays ? { he: aiSays, en: aiSays } : sc.ok;
-    say({ he: `${th.he} ${extra.he || ''}`.trim(), en: `${th.en} ${extra.en || ''}`.trim() });
+    // All tasks done: the patient thanks and commits to a change, the Tasks app shows "Done!",
+    // then the call closes calmly and the money is added.
+    c.tasks.goal = true; c.closing = true;
+    say(ch.commit || H.PATIENT_LINES.thanks);
     if (c.fileAt) (me.stats.solveMs || (me.stats.solveMs = [])).push(now() - c.fileAt);
     if (c.fileAt && now() - c.fileAt < 1200) flag(room, me, 'speed', 'warning', { ms: now() - c.fileAt });
-    return heartSuccess(room, me, c, ch, sc, aiSays);
+    emitPlayer(me, 'call', publicCall(c));
+    setTimeout(() => { if (me.call === c && c.status === 'active' && room.phase === 'playing') heartSuccess(room, me, c, ch, sc, aiSays); }, CLOSE_MS);
+    return { ok: true, correct: true, closing: true };
   }
   if (askHit) say(sc.ask.answer);
   else if (judged.gained || aiSuccess) say(goalMet && !askDone() ? H.PATIENT_LINES.askFirst : aiSays ? { he: aiSays, en: aiSays } : H.PARTIAL[(Math.max(1, c.covered.length) - 1) % H.PARTIAL.length]);

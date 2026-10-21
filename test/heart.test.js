@@ -116,7 +116,7 @@ const s2req = (c, t, d) => c.req(t, d);
   call = await t.waitCall((c) => c.status === 'done');
   await sleep(80);
   const thanks = call.talk.filter((m) => m.who === 'patient').pop();
-  ok(call.tasks.ask && thanks.he.startsWith('תודה על העזרה!'), 'after the case question the patient writes "תודה על העזרה!"');
+  ok(call.tasks.ask && thanks.he.startsWith('תודה על העזרה!') && /אוכל|ירקות|מלח/.test(thanks.he), `patient thanks and commits to a change: "${thanks.he}"`);
   ok(call.result.correct && call.result.delta === 120 && t.me.money === before + 120 && call.tasks.goal, 'only then: success and $120');
 
   // Noob → Minecraft
@@ -201,9 +201,16 @@ const s2req = (c, t, d) => c.req(t, d);
   await sleep(150);
   ok(!s2.me.call, 'calls stop when the timer ends');
   ok((await s2.req('call:pickup', { callId: 'x' })).error, 'calls are locked after the end');
-  ok(rooms.get(cr.code).end.stage === 'board', 'no polls: the end goes straight to the leaderboard');
-  ok((await s2.req('end:feedback', { rating: 9, text: 'x' })).error === 'bad_phase', 'feedback is gone');
-  ok((await s2.req('end:vote', { choice: 'george' })).error === 'bad_phase', 'votes are gone');
+  ok(rooms.get(cr.code).end.stage === 'feedback', 'when calls stop the Feedback app opens');
+  ok((await s2.req('end:feedback', { rating: 11, text: '' })).error, 'rating must be 1-10');
+  ok((await s2.req('end:feedback', { rating: 9, text: 'משחק מעולה, למדתי הרבה על הלב' })).ok, 'student sends a rating + a sentence');
+  await t.req('end:feedback', { rating: 6, text: 'טוב' });
+  ok((await s2.req('end:vote', { choice: 'george' })).error === 'bad_phase', 'no character poll');
+  const rsl = await t.req('end:next', {});
+  const R = rooms.get(cr.code).end;
+  ok(rsl.stage === 'results' && R.poll3.score === 7.5 && R.poll3.reviews.length <= 8 && typeof R.poll2.pct === 'number', `AI results: average ${R.poll3.score}/10, learning success ${R.poll2.pct}%, up to 8 random reviews`);
+  ok((await s2.req('end:feedback', { rating: 3, text: 'late' })).error === 'bad_phase', 'feedback closes once the results are shown');
+  await t.req('end:next', {}); // board
   const steps = [];
   const nPlayers = rooms.get(cr.code).players.size;
   for (let i = 0; i < nPlayers; i++) steps.push(await t.req('end:next', {}));

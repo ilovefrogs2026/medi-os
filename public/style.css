@@ -875,3 +875,65 @@ button.home-card:hover { border-color: var(--green); transform: translateY(-2px)
 .cer-ai .ai-row { margin: 4px 0; text-align: start; }
 .cer-ai .ai-row b { font-size: .82rem; color: #7cf2ff; }
 .cer-ai ul { margin: 2px 0 0; padding-inline-start: 18px; font-size: .85rem; }
+
+/* call tip (tasks live in the Tasks app) */
+.call-tip { width: 100%; max-width: 700px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; margin: 8px 0; border: 1px dashed rgba(255,210,63,.55); border-radius: 10px; background: rgba(255,210,63,.07); color: #ffe7a3; font-size: .92rem; text-align: start; }
+.call-tip.done { border-color: #39ff88; color: #c9ffe0; background: rgba(57,255,136,.08); animation: pulseGlow 1.2s ease-in-out infinite alternate; }
+@keyframes pulseGlow { from { box-shadow: 0 0 0 rgba(57,255,136,0); } to { box-shadow: 0 0 22px rgba(57,255,136,.35); } }
+.call-ended { margin-top: 10px; color: #9fb; font-size: .95rem; letter-spacing: .05em; }
+/* big green "Done!" in the Tasks app */
+.big-done { display: grid; place-items: center; gap: 4px; padding: 14px; margin-bottom: 10px; border: 2px solid #39ff88; border-radius: 14px; background: rgba(57,255,136,.1); animation: popIn .5s cubic-bezier(.2,1.6,.4,1); }
+.big-done .bigv { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; font-size: 3.2rem; color: #031; background: #39ff88; box-shadow: 0 0 30px rgba(57,255,136,.7); }
+.big-done b { font-size: 1.5rem; color: #39ff88; text-shadow: 0 0 12px rgba(57,255,136,.6); }
+@keyframes popIn { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+#tb-money.rising { color: #39ff88; text-shadow: 0 0 14px rgba(57,255,136,.8); }
+/* results */
+.results .res-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+.res-box { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 4px; text-align: center; }
+.res-box small { color: #9fb; } .res-box .big { font-size: 2.6rem; color: #ffd23f; } .res-box em { font-style: normal; font-size: .8rem; opacity: .75; }
+.res-h { margin: 14px 0 6px; font-size: 1rem; }
+@media (max-width: 760px) { .results .res-row { grid-template-columns: 1fr; } }
+
+/* role props for the voxel characters */
+.vox .apron { position: absolute; left: 6px; top: 12px; width: 22px; height: 26px; background: var(--ap); transform: translateZ(9.6px); border-radius: 0 0 3px 3px; box-shadow: inset 0 -5px 0 rgba(0,0,0,.12); }
+.vox .apron::before { content: ''; position: absolute; left: 3px; top: -11px; width: 16px; height: 11px; border: 2px solid var(--ap); border-bottom: none; }
+.vox .overalls { position: absolute; left: 4px; top: 0; width: 26px; height: 38px; transform: translateZ(9.6px);
+  background: linear-gradient(var(--ov), var(--ov)) 3px 0/4px 14px no-repeat, linear-gradient(var(--ov), var(--ov)) 19px 0/4px 14px no-repeat, linear-gradient(var(--ov), var(--ov)) 0 13px/26px 25px no-repeat; }
+.vox .overalls::after { content: ''; position: absolute; left: 9px; top: 19px; width: 8px; height: 6px; border: 1px solid rgba(255,255,255,.35); }
+.vox .mailbag { position: absolute; left: 22px; top: 18px; width: 16px; height: 14px; background: #8a5a2b; border-radius: 2px; transform: translateZ(11px); box-shadow: inset 0 4px 0 #a06a35; }
+.vox .mailbag::before { content: ''; position: absolute; left: -22px; top: -24px; width: 3px; height: 34px; background: #6b4420; transform: rotate(-38deg); transform-origin: bottom; }
+.vox .mailbag::after { content: '✉'; position: absolute; left: 3px; top: -1px; font-size: 9px; color: #fff; }
+.vox .hbadge { position: absolute; left: 20px; top: 4px; font-size: 11px; font-style: normal; color: #ff3b5c; transform: translateZ(9.7px); text-shadow: 0 0 6px #ff3b5c; animation: vBeat 1s ease-in-out infinite; }
+@keyframes vBeat { 0%, 100% { scale: 1; } 30% { scale: 1.35; } }
+.vox .bowtie { position: absolute; left: 10px; top: 0; width: 14px; height: 7px; background: #c0152f; clip-path: polygon(0 0, 50% 50%, 0 100%, 100% 0, 50% 50%, 100% 100%); transform: translateZ(9.7px); }
+.vox .stetho { position: absolute; left: 8px; top: -1px; width: 18px; height: 16px; border: 2px solid #c9ced6; border-top: none; border-radius: 0 0 10px 10px; transform: translateZ(9.7px); }
+.vox .stetho::after { content: ''; position: absolute; left: 4px; bottom: -6px; width: 6px; height: 6px; border-radius: 50%; background: #c9ced6; }
+.vox .bowl { position: absolute; left: 5px; top: 22px; width: 24px; height: 10px; background: #e9e2d4; border-radius: 0 0 12px 12px; transform: translateZ(16px); }
+.vox .bowl::before { content: ''; position: absolute; left: 3px; top: -5px; width: 18px; height: 7px; border-radius: 8px 8px 2px 2px; background: radial-gradient(circle at 30% 60%, #e44 2px, transparent 3px), radial-gradient(circle at 70% 40%, #ffd23f 2px, transparent 3px), #4caf50; }
+.vox .fin { position: absolute; top: 18px; width: 14px; height: 8px; background: #2f5f9a; border-radius: 2px; }
+.vox .fin.fl { left: -10px; transform: translateZ(4px) rotate(30deg); } .vox .fin.fr { left: 30px; transform: translateZ(4px) rotate(-30deg); }
+.vox .headband { position: absolute; left: -1px; top: 6px; width: 36px; height: 5px; background: #e2312b; transform: translateZ(17.6px); box-shadow: 0 0 0 1px rgba(255,255,255,.2); }
+.vc.mhelm { left: -2px; top: -6px; }
+.vox .lamp { position: absolute; left: 12px; top: -4px; width: 10px; height: 7px; border-radius: 3px; background: #fff7c2; transform: translateZ(20px); box-shadow: 0 0 10px 3px rgba(255,240,150,.9); }
+.vox .qmark { position: absolute; left: 10px; top: -36px; font: 700 18px/1 monospace; font-style: normal; color: #7cf2ff; text-shadow: 0 0 8px #7cf2ff; transform: translateZ(17px); animation: vFloat 2s ease-in-out infinite; }
+.vox .vstars { position: absolute; left: -12px; top: -28px; width: 60px; text-align: center; font-size: 9px; font-style: normal; color: #b9c2ff; letter-spacing: 6px; transform: translateZ(17px); animation: vFloat 3s ease-in-out infinite; }
+@keyframes vFloat { 0%, 100% { translate: 0 0; } 50% { translate: 0 -4px; } }
+.vox .clipboard { position: absolute; left: -3px; top: 26px; width: 14px; height: 18px; background: #8a5a2b; transform: translateZ(8px) rotate(-8deg); border-radius: 2px; }
+.vox .clipboard::after { content: ''; position: absolute; inset: 3px 2px 2px; background: repeating-linear-gradient(#fff 0 2px, #cfd6df 2px 4px); }
+.vox .rod { position: absolute; left: 3px; top: -32px; width: 3px; height: 72px; background: #7a4f28; transform: translateZ(7px) rotate(-28deg); transform-origin: bottom; }
+.vox .rod::after { content: ''; position: absolute; left: 1px; top: 0; width: 1px; height: 40px; background: rgba(255,255,255,.7); transform: rotate(28deg); transform-origin: top; }
+.vox .rpin { position: absolute; left: -7px; top: 34px; width: 26px; height: 6px; background: #d9a066; border-radius: 3px; transform: translateZ(7px); box-shadow: -4px 0 0 -1px #a86f3c, 4px 0 0 -1px #a86f3c; }
+.vox .dumbbell { position: absolute; left: -5px; top: 35px; width: 22px; height: 3px; background: #9aa3ad; transform: translateZ(7px); }
+.vox .dumbbell::before, .vox .dumbbell::after { content: ''; position: absolute; top: -4px; width: 5px; height: 11px; background: #3b4048; border-radius: 1px; }
+.vox .dumbbell::before { left: -2px; } .vox .dumbbell::after { right: -2px; }
+.vox .ttube { position: absolute; left: 3px; top: 26px; width: 6px; height: 16px; border: 1px solid rgba(255,255,255,.8); border-top: none; border-radius: 0 0 4px 4px; transform: translateZ(7px) rotate(12deg); background: linear-gradient(transparent 45%, #ff5fa2 45%); box-shadow: 0 0 8px rgba(255,95,162,.6); }
+.vface .goggles { position: absolute; left: 3px; top: 8px; width: 28px; height: 10px; border: 2px solid #3a7bd5; border-radius: 4px; background: rgba(140,200,255,.25); }
+.vox .qmark { top: -24px; left: 12px; }
+.vox .vstars { top: -18px; }
+.vox .rod { left: 6px; top: -36px; width: 4px; height: 78px; transform: translateZ(14px) rotate(-30deg); box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+.vox .fin { top: 16px; width: 16px; height: 9px; background: #234c80; } .vox .fin.fl { left: -14px; transform: translateZ(10px) rotate(35deg); } .vox .fin.fr { left: 32px; transform: translateZ(10px) rotate(-35deg); }
+.vox .ttube { top: 30px; left: 1px; width: 7px; height: 18px; transform: translateZ(12px) rotate(12deg); }
+.vox .dumbbell { top: 36px; left: -7px; width: 26px; height: 4px; transform: translateZ(12px); }
+.vox .dumbbell::before, .vox .dumbbell::after { width: 6px; height: 13px; top: -5px; }
+.vox .clipboard { transform: translateZ(12px) rotate(-8deg); }
+.vox .rpin { transform: translateZ(12px); }

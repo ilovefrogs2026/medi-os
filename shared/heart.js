@@ -579,6 +579,38 @@
     thanks: { he: 'תודה על העזרה!', en: 'Thanks for the help!' },
     askFirst: { he: 'זה עוזר, אבל עוד לא שאלת אותי מה בדיוק קורה איתי…', en: "That helps, but you haven't asked me what exactly is going on with me…" }
   });
+
+  // ── Closing line once every task is done: thanks + a commitment to change ──
+  const COMMIT = {
+    h_rosa: ['תודה על העזרה! אוריד מלח ומטוגנים ואוכל יותר ירקות.', "Thanks for the help! I'll cut salt and fried food and eat more vegetables."],
+    h_shimon: ['תודה על העזרה! אשתנה ואעשה ספורט — אתחיל ללכת חצי שעה כל יום.', "Thanks for the help! I'll change and exercise — I'll start walking half an hour a day."],
+    h_yankel: ['תודה על העזרה! אשאיר לעצמי דג שמן פעמיים בשבוע.', "Thanks for the help! I'll keep oily fish for myself twice a week."],
+    h_gadi: ['תודה על העזרה! אפסיק לעשן ואלך לרופא שיבדוק את העורקים.', "Thanks for the help! I'll quit smoking and see a doctor to check my arteries."],
+    h_betty: ['תודה על העזרה! אנוח יותר, אפחית מלח ואלך לרופא שימדוד לי לחץ דם.', "Thanks for the help! I'll rest more, cut salt and have a doctor check my blood pressure."],
+    h_ant: ['תודה על העזרה! נלמד את כל המושבה לשמור על הלב.', "Thanks for the help! We'll teach the whole colony to look after their hearts."],
+    h_whale: ['תודה על העזרה! אני עושה בדיוק מה שאמרת עד שהאמבולנס מגיע.', "Thanks for the help! I'm doing exactly what you said until the ambulance arrives."],
+    h_ducky: ['תודה על העזרה! קוואק — הכפריים יתחילו לזוז ולאכול בריא.', "Thanks for the help! Quack — the villagers will start moving and eating healthy."],
+    h_shaked: ['הב! תודה על העזרה! אני עושה מה שאמרת עד שהעזרה מגיעה.', "Woof! Thanks for the help! I'm doing what you said until help arrives."],
+    h_tzvi: ['תודה על העזרה! עכשיו המחקר שלי שלם, ואספר על זה לכל הכוכב.', "Thanks for the help! My research is complete and I'll tell the whole planet."],
+    h_elephant: ['תודה על העזרה! אשמור על הלב ואלמד את כולם מה גיליתי.', "Thanks for the help! I'll look after my heart and teach everyone what I found."],
+    h_legend: ['תודה על העזרה! אפצ\'י… מעכשיו אזעיק עזרה מיד כשמשהו לוחץ בחזה.', "Thanks for the help! Achoo… from now on I'll call for help right away if my chest hurts."]
+  };
+  for (const list of [CAST, MINECRAFT, PLANET]) for (const ch of list) if (COMMIT[ch.id]) ch.commit = { he: COMMIT[ch.id][0], en: COMMIT[ch.id][1] };
+  // Extra heart & vessels reference topics for the MDA app
+  INFO.push(
+    { id: 'omega', icon: '🐟', title: { he: 'אומגה 3', en: 'Omega-3' },
+      action: { he: 'מפחיתה דלקת וטריגליצרידים', en: 'Lowers inflammation and triglycerides' },
+      signs: { he: 'מקורות: סלמון, סרדינים, מקרל, אגוזי מלך, זרעי פשתן וצ\'יה', en: 'Sources: salmon, sardines, mackerel, walnuts, flax and chia seeds' },
+      steps: { he: ['דג שמן פעמיים בשבוע', 'מקור צמחי: אגוזי מלך, פשתן טחון, צ\'יה', 'אומגה 3 עוזרת לשמור על דופן העורקים ולהפחית שומנים בדם'], en: ['Oily fish twice a week', 'Plant sources: walnuts, ground flax, chia', 'Omega-3 helps protect artery walls and lower blood fats'] } },
+    { id: 'food', icon: '🥗', title: { he: 'תזונה ללב', en: 'Heart-healthy eating' },
+      action: { he: 'פחות מלח ושומן רווי, יותר סיבים', en: 'Less salt and saturated fat, more fibre' },
+      signs: { he: 'סימני תזונה לא בריאה: כולסטרול LDL גבוה, לחץ דם גבוה, עודף משקל', en: 'Signs of a poor diet: high LDL cholesterol, high blood pressure, excess weight' },
+      steps: { he: ['ירקות, פירות, קטניות ודגנים מלאים בכל יום', 'שמן זית במקום חמאה; פחות מטוגן ומעובד', 'פחות מ-5 גרם מלח ביום (כפית)'], en: ['Vegetables, fruit, legumes and whole grains daily', 'Olive oil instead of butter; less fried and processed food', 'Under 5 g of salt a day (a teaspoon)'] } },
+    { id: 'risk', icon: '⚠', title: { he: 'גורמי סיכון', en: 'Risk factors' },
+      action: { he: 'חלקם אפשר לשנות, חלקם לא', en: 'Some can be changed, some cannot' },
+      signs: { he: 'לשינוי: עישון, לחץ דם, כולסטרול, סוכרת, השמנה, חוסר פעילות, מתח. קבועים: גיל, גנטיקה', en: 'Changeable: smoking, blood pressure, cholesterol, diabetes, obesity, inactivity, stress. Fixed: age, genetics' },
+      steps: { he: ['עישון הוא גורם הסיכון החזק ביותר שאפשר להפסיק', 'סוכרת ולחץ דם גבוה פוגעים בדופן העורק לאורך שנים', 'בדיקות קבועות אצל הרופא מגלות בעיות מוקדם'], en: ['Smoking is the strongest risk you can stop', 'Diabetes and high blood pressure damage artery walls over years', 'Regular check-ups catch problems early'] } }
+  );
   const PARTIAL = [
     { he: 'זה עוזר, תודה. יש עוד משהו שחשוב שאדע?', en: 'That helps, thanks. Is there anything else I should know?' },
     { he: 'אוקיי, הבנתי את זה. מה עוד אני יכול לעשות?', en: 'Okay, I get that. What else can I do?' },
