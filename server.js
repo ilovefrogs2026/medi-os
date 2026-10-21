@@ -154,7 +154,8 @@ function publicCall(call) {
       chat: call.chat, aiOn: AI.aiEnabled(), maxTries: MAX_TRIES_CHOICE,
       fund: call.stage === 'talk' ? null : call.fund,
       tasks: call.tasks, talk: call.talk, goal: sc.goal, need: sc.need, progress: call.covered.length, patience: MAX_NO_PROGRESS - call.noProgress,
-      file: call.stage === 'file' || status === 'done' ? sc.file : null
+      file: call.stage === 'file' || status === 'done' ? sc.file : null,
+      ask: (call.stage === 'file' || status === 'done') && sc.ask ? sc.ask.task : null
     });
   }
   return out;
@@ -173,7 +174,7 @@ function heartCall(call, ch, h) {
   call.sIdx = idxs[Math.floor(Math.random() * idxs.length)];
   if (h) h.used[ch.id].push(call.sIdx);
   call.stage = 'talk';
-  call.tasks = { greet: false, fund: false, file: false, goal: false };
+  call.tasks = { greet: false, fund: false, file: false, ask: false, goal: false };
   call.talk = [];
   call.covered = []; call.noProgress = 0;
   call.fund = fundNumber();
@@ -277,19 +278,20 @@ function startGame(room) {
   emitRoom(room, 'room', roomState(room));
 }
 
-const END_STAGES = ['feedback', 'poll2', 'poll3', 'board', 'podium']; // character poll removed
+const END_STAGES = ['board', 'podium']; // all polls and feedback removed
 function realPlayers(room) { return [...room.players.values()].filter((p) => !p.bot); }
 
 function endGame(room) {
   if (room.phase !== 'playing') return;
   room.phase = 'over';
-  room.end = { stage: 'feedback', poll2: null, poll3: null, order: [], revealed: [], podium: null };
+  room.end = { stage: 'board', poll2: null, poll3: null, order: [], revealed: [], podium: null };
+  enterStage(room, 'board');
   for (const p of room.players.values()) {
     clearTimeout(p.callTimer); p.call = null;
     p.endVote = null; p.voteBlocked = false; p.endFeedback = null;
     syncMe(p);
   }
-  // Calls and MDA lock; the global chat gets a link to Polls & Feedback
+  // Calls and MDA lock; the global chat gets a link to the leaderboard
   const m = sysMsg(''); m.event = { type: 'polls' };
   room.global.push(m); emitRoom(room, 'chat', { channel: 'global', msg: m });
   emitRoom(room, 'room', roomState(room));
@@ -367,7 +369,19 @@ function enterStage(room, stage) {
           he: `${p.name} ענה/תה על ${stats.answered} שיחות ועזר/ה ל-${stats.correct} מטופלים (${stats.accuracy}%)${avg ? `, בממוצע ${avg} שניות מפתיחת התיק` : ''}${stats.worlds ? `, וביקר/ה ב-${stats.worlds} עולמות מיוחדים` : ''}.`,
           en: `${p.name} answered ${stats.answered} calls and helped ${stats.correct} patients (${stats.accuracy}%)${avg ? `, ${avg}s on average from opening the file` : ''}${stats.worlds ? `, and visited ${stats.worlds} special worlds` : ''}.`
         };
-        return { id: p.id, name: p.name, money: p.money, score: playerScore(p), achievements: achievementsOf(p), stats, feedback: p.endFeedback || null,
+        const S2 = (he, en) => ({ he, en });
+        const strengths = [], improve = [];
+        if (stats.answered && stats.accuracy >= 80) strengths.push(S2('דיוק גבוה בעזרה למטופלים', 'High accuracy helping patients'));
+        if (avg != null && avg <= 40) strengths.push(S2('תגובה מהירה מפתיחת התיק', 'Fast response after opening the file'));
+        if (stats.worlds) strengths.push(S2('הגיע/ה לעולמות מיוחדים', 'Reached special worlds'));
+        if (stats.correct >= 3) strengths.push(S2('התמדה — עזר/ה להרבה מטופלים', 'Persistence — helped many patients'));
+        if (stats.hangups) improve.push(S2('לנתק פחות שיחות', 'Hang up on fewer calls'));
+        if (stats.answered && stats.accuracy < 60) improve.push(S2('לקרוא את התיק ולשאול את השאלה שבמשימה', 'Read the file and ask the question from the task'));
+        if (avg != null && avg > 60) improve.push(S2('לענות מהר יותר אחרי פתיחת התיק', 'Answer faster after opening the file'));
+        if (!strengths.length) strengths.push(S2('נכנס/ה למשמרת ונתן/ה מענה', 'Joined the shift and answered calls'));
+        if (!improve.length) improve.push(S2('להמשיך בדיוק ככה', 'Keep it up exactly like this'));
+        const analysis = { strengths: strengths.slice(0, 3), improve: improve.slice(0, 2) };
+        return { id: p.id, name: p.name, money: p.money, score: playerScore(p), achievements: achievementsOf(p), stats, analysis, feedback: null,
           performance: (p.log || []).filter((l) => ['success', 'fail', 'hangup'].includes(l.tag)).slice(-6).map(({ he, en, delta }) => ({ he, en, delta })),
           history: (p.log || []).slice(-4).map(({ he, en }) => ({ he, en })), summary: auto, byAI: false, note: null };
       })
@@ -1026,6 +1040,7 @@ async function sayToPatient(room, me, d) {
   if (room.phase !== 'playing' || !c || c.id !== d.callId || c.kind !== 'heart' || c.status !== 'active') return { error: 'no_call' };
   if (c.busy) return { error: 'slow_down' };
   let text = cleanText(d.text, 300);
+  if (d.presetId && c.stage === 'file') return { error: 'type_yourself' };
   if (d.presetId) { const pr = H.PRESETS.find((x) => x.id === d.presetId); if (!pr) return { error: 'bad_preset' }; text = L(me.lang, pr.he, pr.en); }
   if (!text) return { error: 'empty' };
   if (c.talk.length > 80) return { error: 'slow_down' };
@@ -1043,13 +1058,16 @@ async function sayToPatient(room, me, d) {
     let said = false;
     if (!c.problemSaid) { say(ch.hello); c.problemSaid = true; said = true; }
     if (fund) { if (c.stage === 'talk') { c.tasks.fund = true; c.stage = 'fund'; } fundLine(); said = true; }
-    if (!said) say(c.stage === 'fund' ? H.PATIENT_LINES.waiting : H.PATIENT_LINES.offer);
+    if (!said) say(c.stage === 'fund' ? H.PATIENT_LINES.waiting : c.tasks.greet && !greet ? H.PATIENT_LINES.unclear : H.PATIENT_LINES.offer);
     emitPlayer(me, 'call', publicCall(c));
     return { ok: true, greet, fund };
   }
 
-  // File open: judge the player's guidance (AI when a key is set, otherwise the case rules)
-  let result = null;
+  // File open: the Tasks app now shows the case question (ask) and the case goal. Presets are gone.
+  const askHit = !!(sc.ask && !c.tasks.ask && sc.ask.keys.some((w) => low.includes(String(w).toLowerCase())));
+  if (askHit) c.tasks.ask = true;
+  const askDone = () => !sc.ask || c.tasks.ask;
+  let aiSays = null, aiSuccess = null;
   if (AI.aiEnabled()) {
     c.busy = true; emitPlayer(me, 'call', publicCall(c));
     const r = await AI.judgePatient({
@@ -1060,21 +1078,26 @@ async function sayToPatient(room, me, d) {
     });
     c.busy = false;
     if (me.call !== c || c.status !== 'active') return { ok: true };
-    if (r) { ruleJudge(c, sc, text); result = { success: r.success, gained: r.success ? 1 : 0, reply: r.reply }; }
+    if (r) { aiSuccess = !!r.success; aiSays = r.reply || null; }
   }
-  if (!result) result = ruleJudge(c, sc, text);
-  if (result.success) {
+  const judged = ruleJudge(c, sc, text);
+  const goalMet = aiSuccess === null ? judged.success : (aiSuccess || judged.success);
+  if (goalMet && askDone()) {
+    // Money only once the patient writes "thanks for the help!"
     c.tasks.goal = true;
-    if (result.reply) say({ he: result.reply, en: result.reply });
+    const th = H.PATIENT_LINES.thanks;
+    const extra = aiSays ? { he: aiSays, en: aiSays } : sc.ok;
+    say({ he: `${th.he} ${extra.he || ''}`.trim(), en: `${th.en} ${extra.en || ''}`.trim() });
     if (c.fileAt) (me.stats.solveMs || (me.stats.solveMs = [])).push(now() - c.fileAt);
     if (c.fileAt && now() - c.fileAt < 1200) flag(room, me, 'speed', 'warning', { ms: now() - c.fileAt });
-    return heartSuccess(room, me, c, ch, sc, result.reply);
+    return heartSuccess(room, me, c, ch, sc, aiSays);
   }
-  if (result.gained) say(result.reply ? { he: result.reply, en: result.reply } : H.PARTIAL[(c.covered.length - 1) % H.PARTIAL.length]);
+  if (askHit) say(sc.ask.answer);
+  else if (judged.gained || aiSuccess) say(goalMet && !askDone() ? H.PATIENT_LINES.askFirst : aiSays ? { he: aiSays, en: aiSays } : H.PARTIAL[(Math.max(1, c.covered.length) - 1) % H.PARTIAL.length]);
   else {
     c.noProgress++;
     if (c.noProgress >= MAX_NO_PROGRESS) return heartFail(room, me, c);
-    say(result.reply ? { he: result.reply, en: result.reply } : c.noProgress % 2 ? sc.fail : H.LOST[(c.noProgress >> 1) % H.LOST.length]);
+    say(H.PATIENT_LINES.nonsense);
   }
   emitPlayer(me, 'call', publicCall(c));
   return { ok: true, correct: false };

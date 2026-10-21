@@ -402,16 +402,192 @@
   // Tasks tracked during a call
   const TASKS = [
     { id: 'greet', he: 'לברך את המטופל או לשאול איך אפשר לעזור', en: 'Greet the patient or ask how you can help' },
-    { id: 'fund', he: 'לבקש את מספר קופת החולים של המטופל', en: 'Ask for the patient\'s health-fund number' }
+    { id: 'fund', he: 'לבקש את מספר קופת החולים של המטופל', en: 'Ask for the patient\'s health-fund number' },
+    { id: 'file', he: 'טיפ: הסתכלו באפליקציית מד"א › תיק רפואי כדי לקבל את הפרטים המלאים על המקרה', en: 'Tip: look in the MDA app › Medical file for the full case details' },
+    { id: 'ask', he: '', en: '' }, // filled per case once the file is open
+    { id: 'goal', he: '', en: '' } // filled per case
   ];
   const GREET_WORDS = ['שלום', 'היי', 'הי ', 'אהלן', 'בוקר טוב', 'ערב טוב', 'צהריים טובים', 'מה שלומ', 'איך אפשר לעזור', 'איך אני יכול לעזור', 'איך אוכל לעזור', 'במה אפשר לעזור', 'במה אוכל לעזור', 'מה קרה', 'כאן מד"א', 'מד"א',
     'hello', 'hi ', 'hey', 'good morning', 'good evening', 'good afternoon', 'how can i help', 'how may i help', 'what happened', 'this is mda'];
-  const FUND_WORDS = ['קופת חולים', 'קופת', 'קופה', 'מספר קופ', 'health fund', 'health-fund', 'fund number', 'insurance'];
+  const FUND_WORDS = ['קופת חולים', 'קופת', 'קופה', 'מספר קופ', 'תעודת זהות', 'ת"ז', 'תז', 'מספר זיהוי', 'מספר מזהה', 'id number', 'your id', 'identification', 'health fund', 'health-fund', 'fund number', 'insurance'];
   const PATIENT_LINES = {
     fund: { he: 'בטח. מספר קופת החולים שלי הוא {n}.', en: 'Sure. My health-fund number is {n}.' },
     offer: { he: 'אפשר לבדוק את התיק שלי. אני יכול לתת את מספר קופת החולים.', en: 'You can check my file. I can give you my health-fund number.' },
-    waiting: { he: 'בדקת את התיק שלי באפליקציית מד"א?', en: 'Have you checked my file in the MDA app?' }
+    waiting: { he: 'בדקת את התיק שלי באפליקציית מד"א?', en: 'Have you checked my file in the MDA app?' },
+    ready: { he: 'ראית את התיק? מה אתה ממליץ לי לעשות?', en: 'Did you see my file? What do you recommend?' }
   };
+
+
+  // ── Free-chat judging (used when no AI key is set) ──
+  // goal = the case task shown in the Tasks app. keys = concept groups (any word in a group counts);
+  // the player succeeds once `need` groups are covered across their messages. Words are matched
+  // as substrings, lower-case, in Hebrew and English.
+  const G = (he, en, need, ...keys) => ({ goal: { he, en }, need, keys });
+  const CALL = ['101', 'אמבולנס', 'מד"א', 'מדא', 'ambulance', 'emergency', 'להזעיק', 'לחייג', 'call for help', 'call 101'];
+  const CPR = ['עיסוי', 'עיסויים', 'החייאה', 'לחיצות', 'לחיצה על החזה', 'cpr', 'compression', 'chest compress'];
+  const AED = ['דפיברילטור', 'דפיבריל', 'aed', 'defib'];
+  const MOVE = ['הליכה', 'ללכת', 'ריצה', 'לרוץ', 'שחי', 'אופניים', 'אירובי', 'ספורט', 'פעילות גופנית', 'להתאמן', 'אימון', 'טיול', 'walk', 'run', 'swim', 'cycl', 'bike', 'aerobic', 'exercise', 'sport', 'hike'];
+  const QUIT = ['להפסיק לעשן', 'להפסיק עם העישון', 'להפסיק את העישון', 'להיגמל', 'גמילה', 'בלי לעשן', 'לא לעשן', 'הפסקת עישון', 'תפסיק לעשן', 'quit smoking', 'stop smoking', "don't smoke", 'no smoking', 'quit'];
+  const GOALS = {
+    h_rosa: [
+      G('לייעץ לסבתא רוזה איך לשנות את התזונה כדי לשמור על כלי הדם', 'Advise Grandma Rosa how to change her diet to protect her blood vessels', 2,
+        ['מלח', 'מלוח', 'נתרן', 'salt', 'sodium'], ['מטוגן', 'טיגון', 'שומן', 'שומני', 'fried', 'fat'], ['ירק', 'פרי', 'פירות', 'דגנים מלאים', 'סיבים', 'סלט', 'vegetable', 'fruit', 'whole grain', 'fiber', 'fibre', 'salad']),
+      G('להסביר לסבתא רוזה איך להוריד כולסטרול "רע" (LDL)', 'Explain to Grandma Rosa how to lower "bad" (LDL) cholesterol', 2,
+        ['שומן רווי', 'רווי', 'טראנס', 'חמאה', 'שמנת', 'saturated', 'trans', 'butter', 'cream'], ['סיבים', 'שיבולת', 'קטניות', 'עדשים', 'שעועית', 'fiber', 'fibre', 'oat', 'legume', 'beans', 'lentil'], ['ירק', 'פרי', 'פירות', 'vegetable', 'fruit']),
+      G('להמליץ לסבתא רוזה על סגנון תזונה ששומר על הלב בגיל השלישי', 'Recommend a heart-healthy eating style for Grandma Rosa', 2,
+        ['ים תיכונ', 'ים-תיכונ', 'mediterranean'], ['שמן זית', 'olive'], ['דג', 'fish', 'קטניות', 'legume', 'אגוז', 'nut'], ['ירק', 'vegetable', 'פרי', 'fruit'])
+    ],
+    h_shimon: [
+      G('להנחות את שמעון כמה פעילות אירובית לעשות בשבוע', 'Tell Shimon how much aerobic activity to do each week', 2,
+        ['150', '30 דק', 'חצי שעה', 'שעתיים וחצי', '30 min', 'half an hour', 'two and a half hours'], MOVE),
+      G('להסביר לשמעון איך פעילות אירובית עוזרת ללב ולכלי הדם', 'Explain to Shimon how aerobic exercise helps the heart and vessels', 2,
+        ['שריר הלב', 'מחזק', 'לב חזק', 'strengthen', 'stronger', 'heart muscle'], ['לחץ דם', 'לחץ הדם', 'blood pressure'], ['גמיש', 'flexib', 'elastic'], ['דופק', 'pulse', 'heart rate']),
+      G('לעזור לשמעון לבחור פעילות אירובית מתאימה', 'Help Shimon choose an aerobic activity', 1, MOVE)
+    ],
+    h_yankel: [
+      G('להסביר ליאנקל איך אומגה 3 עוזרת לכלי הדם', 'Explain to Yankel how omega-3 helps blood vessels', 2,
+        ['דלקת', 'דלקות', 'inflammat'], ['טריגליצרידים', 'טריגליצריד', 'שומנים בדם', 'triglycer', 'blood fats'], ['אומגה', 'omega', 'דג', 'fish']),
+      G('להמליץ ליאנקל כמה פעמים בשבוע לאכול דגים שמנים', 'Tell Yankel how often to eat oily fish', 2,
+        ['פעמיים', '2 פעמים', 'פעמים בשבוע', 'twice', 'two times', '2 times'], ['שבוע', 'week'], ['סלמון', 'סרדינ', 'מקרל', 'salmon', 'sardine', 'mackerel', 'דג שמן', 'oily fish']),
+      G('להציע לנכדה של יאנקל מקורות צמחיים לאומגה 3', 'Suggest plant sources of omega-3 for Yankel\'s granddaughter', 1,
+        ['אגוזי מלך', 'אגוז', 'walnut', 'פשתן', 'flax', "צ'יה", 'ציה', 'chia', 'קנבוס', 'hemp'])
+    ],
+    h_gadi: [
+      G('להסביר לגדי מהי טרשת עורקים ולשכנע אותו להיגמל מעישון', 'Explain atherosclerosis to Gadi and convince him to quit smoking', 2,
+        ['פלאק', 'רובד', 'הצטבר', 'שומן', 'כולסטרול', 'plaque', 'build', 'fat', 'cholesterol'], QUIT),
+      G('להסביר לגדי מה קורה לזרימת הדם כשהעורק מצר', 'Explain to Gadi what happens to blood flow when an artery narrows', 2,
+        ['מצר', 'היצרות', 'צר', 'נסתם', 'narrow', 'block'], ['פחות דם', 'פחות חמצן', 'חמצן', 'זרימ', 'less blood', 'oxygen', 'flow'], ['קריש', 'נסדק', 'נקרע', 'clot', 'rupture', 'crack']),
+      G('לספר לגדי אילו עורקים בסכנה הכי גדולה', 'Tell Gadi which arteries are most at risk', 2,
+        ['כליל', 'עורקי הלב', 'coronary', 'heart arter'], ['צוואר', 'קרוטיד', 'carotid', 'neck'], ['רגל', 'רגליים', 'leg'])
+    ],
+    h_betty: [
+      G('להסביר לבטי למה לחץ דם גבוה מסוכן ללב ולכלי הדם', 'Explain to Betty why high blood pressure is dangerous', 2,
+        ['דופן', 'דפנות', 'פוגע בעורק', 'שוחק', 'wall', 'damage'], ['טרשת', 'athero'], ['עובד קשה', 'עומס', 'מאמץ', 'harder', 'strain', 'overload', 'work hard'], ['שבץ', 'התקף', 'stroke', 'heart attack']),
+      G('לתת לבטי דרכים להפחית מתח ולחץ דם', 'Give Betty ways to reduce stress and blood pressure', 2,
+        ['שינה', 'לישון', 'sleep'], MOVE, ['הפסק', 'מנוחה', 'לנוח', 'נשימ', 'רגוע', 'להירגע', 'מדיטציה', 'break', 'rest', 'breath', 'relax', 'meditat'], ['פחות קפה', 'קפאין', 'less coffee', 'caffeine']),
+      G('להנחות את בטי מה להפחית בתזונה כשיש לחץ דם גבוה', 'Tell Betty what to cut down on with high blood pressure', 1,
+        ['מלח', 'מלוח', 'נתרן', 'salt', 'sodium'])
+    ],
+    h_ant: [
+      G('לשכנע את המושבה של אבא נמלה להתרחק מעישון', 'Convince Daddy Ant\'s colony to stay away from smoking', 1,
+        ['עישון', 'לעשן', 'סיגר', 'טבק', 'smok', 'cigarette', 'tobacco']),
+      G('להסביר לאבא נמלה אילו גורמי סיכון אפשר לשנות', 'Explain to Daddy Ant which risk factors can be changed', 3,
+        ['עישון', 'לעשן', 'smok'], ['תזונה', 'אוכל', 'diet', 'food', 'eat'], ['לחץ דם', 'blood pressure'], MOVE, ['כולסטרול', 'cholesterol', 'משקל', 'weight'])
+    ],
+    h_whale: [
+      G('לזהות את התקף הלב ולהנחות את אמא לוויתן מה לעשות מיד', 'Recognise the heart attack and tell Mama Whale what to do now', 1, CALL),
+      G('להנחות את אמא לוויתן טיפול חירום בדום לב', 'Guide Mama Whale through emergency treatment for cardiac arrest', 2, CALL, CPR, AED)
+    ],
+    h_ducky: [
+      G('ללמד את הכפריים של Mr_Ducky איך למנוע טרשת עורקים', 'Teach Mr_Ducky\'s villagers how to prevent atherosclerosis', 2,
+        ['ירק', 'פרי', 'פירות', 'פחות מטוגן', 'פחות עוגות', 'תזונה בריאה', 'אוכל בריא', 'vegetable', 'fruit', 'less fried', 'less cake', 'healthy food', 'healthy diet'], MOVE, QUIT),
+      G('להסביר ל-Mr_Ducky מה תפקיד העורקים הכליליים', 'Explain to Mr_Ducky what the coronary arteries do', 2,
+        ['שריר הלב', 'ללב עצמו', 'heart muscle', 'the heart itself'], ['דם', 'חמצן', 'blood', 'oxygen'])
+    ],
+    h_shaked: [
+      G('להנחות את שקד טיפול חירום בדום לב', 'Guide Shaked through emergency treatment for cardiac arrest', 2, CALL, CPR, AED),
+      G('לזהות סימני התקף לב ולהזעיק עזרה', 'Recognise heart-attack signs and call for help', 2,
+        ['חזה', 'chest'], CALL, ['יד', 'לסת', 'גב', 'זיעה', 'קוצר נשימה', 'arm', 'jaw', 'back', 'sweat', 'breath'])
+    ],
+    h_tzvi: [
+      G('לפתור את שאלת המחקר: למה פלאק קטן עלול לגרום להתקף לב פתאומי', 'Solve the research question: why small plaque can cause a sudden heart attack', 2,
+        ['נסדק', 'נקרע', 'סדק', 'קרע', 'crack', 'rupture'], ['קריש', 'קרישי', 'clot'])
+    ],
+    h_elephant: [
+      G('לפתור את שאלת המחקר: איך עישון ולחץ דם מתחילים טרשת עורקים', 'Solve the research question: how smoking and blood pressure start atherosclerosis', 2,
+        ['אנדותל', 'שכבה הפנימית', 'דופן הפנימית', 'הדופן', 'endotheli', 'inner lining', 'inner layer', 'wall'], ['שומן', 'כולסטרול', 'דלקת', 'fat', 'cholesterol', 'inflammat', 'plaque', 'פלאק'])
+    ],
+    h_legend: [
+      G('לפתור את שאלת המחקר: למה בהתקף לב אומרים "זמן הוא שריר"', 'Solve the research question: why "time is muscle" in a heart attack', 2,
+        ['מתים', 'מת', 'נהרס', 'נפגע', 'נזק', 'die', 'damage', 'death', 'dead'], ['מהר', 'מהיר', 'דקה', 'דקות', 'זמן', 'fast', 'quick', 'minute', 'time', 'early', 'מוקדם'])
+    ]
+  };
+  for (const list of [CAST, MINECRAFT, PLANET]) for (const ch of list) {
+    if (!ch.scenarios) continue;
+    ch.scenarios.forEach((sc, i) => Object.assign(sc, GOALS[ch.id][i]));
+  }
+
+  // ── Opening line: the patient says he isn't well and gives brief symptoms ──
+  const HELLO = {
+    h_rosa: ['שלום… אני לא מרגישה כל כך טוב. יש לי סחרחורת וכבדות בראש, והלחץ דם שלי גבולי.', "Hello… I don't feel very well. I'm dizzy with a heavy head, and my blood pressure is borderline."],
+    h_shimon: ['שלום. אני לא מרגיש טוב — אני מתנשף מהר בעלייה ומרגיש כבדות ברגליים.', "Hello. I don't feel well — I get out of breath fast uphill and my legs feel heavy."],
+    h_yankel: ['שלום. אני לא מרגיש הכי טוב — עייף כל הזמן ויש לי כאבים במפרקים.', "Hello. I don't feel great — tired all the time, with aching joints."],
+    h_gadi: ['שלום. אני לא מרגיש טוב — כואבות לי הרגליים כשאני הולך, ולפעמים לוחץ לי בחזה במאמץ.', "Hello. I don't feel well — my legs hurt when I walk, and sometimes my chest feels tight when I exert myself."],
+    h_betty: ['שלום. אני לא מרגישה טוב — יש לי כאב ראש חזק ודפיקות לב מהירות.', "Hello. I don't feel well — I have a bad headache and a racing heartbeat."],
+    h_ant: ['שלום. אני לא מרגיש טוב — אני עייף ומתנשף, וגם הנמלים במושבה שלי.', "Hello. I don't feel well — I'm tired and breathless, and so is my colony."],
+    h_whale: ['שלום! בעלי לא מרגיש טוב — הוא אוחז בחזה, מזיע ונראה רע מאוד!', "Hello! My husband isn't well — he's clutching his chest, sweating and looks very bad!"],
+    h_ducky: ['קוואק. לא טוב פה — הכפריים בעולם הקוביות מתעייפים מהר ולוחץ להם בחזה במאמץ.', 'Quack. Things are bad — the block-world villagers tire fast and get chest pressure when they exert themselves.'],
+    h_shaked: ['הב! הבעלים שלי לא מרגיש טוב ליד המכרה — הוא חיוור ומחזיק את החזה!', "Woof! My owner isn't well near the mine — he's pale and holding his chest!"],
+    h_tzvi: ['שלום… אני לא מרגיש טוב, הראש כואב לי מרוב מחקר! יש לי שאלה על פלאק בעורקים.', "Hello… I don't feel well, my head hurts from all this research! I have a question about artery plaque."],
+    h_elephant: ['שלום… לא מרגיש טוב, אני מסוחרר מכל הנתונים! יש לי שאלה על איך מתחילה טרשת עורקים.', "Hello… not feeling well, I'm dizzy from all the data! I have a question about how atherosclerosis begins."],
+    h_legend: ['שלום… אני לא מרגיש טוב, אפצ\'י! יש לי שאלת מחקר על התקף לב.', "Hello… I don't feel well, achoo! I have a research question about heart attacks."]
+  };
+  // ── After the file opens: what the player must ask (Tasks update to this), and what the patient answers ──
+  const A = (he, en, keys, ahe, aen) => ({ task: { he, en }, keys, answer: { he: ahe, en: aen } });
+  const WHEN = ['מתי', 'ממתי', 'כמה זמן', 'לפני כמה', 'התחיל', 'when', 'how long', 'since', 'started'];
+  const BREATH = ['נושם', 'נשימה', 'בהכרה', 'מגיב', 'ער?', 'breath', 'conscious', 'respon', 'awake'];
+  const KNOW = ['מה אתה יודע', 'מה ידוע', 'מה ראית', 'מה גילית', 'מה מצאת', 'מה כבר', 'מה השאלה', 'מה בדיוק', 'what do you know', 'what did you', 'what have you', 'found'];
+  const ASKS = {
+    h_rosa: [A('לשאול את סבתא רוזה מה היא אוכלת ביום רגיל', 'Ask Grandma Rosa what she eats on a normal day',
+      ['אוכלת', 'אכלת', 'אוכלים', 'ארוחה', 'ארוחות', 'תפריט', 'מבשלת', 'תזונה', 'eat', 'meal', 'diet', 'food'],
+      'בבוקר לחם לבן עם גבינה מלוחה, בצהריים שניצל מטוגן, ובערב עוגה עם תה.', 'White bread with salty cheese for breakfast, fried schnitzel for lunch and cake with tea in the evening.')],
+    h_shimon: [A('לשאול את שמעון כמה הוא זז ומתאמן בשבוע', 'Ask Shimon how much he moves and exercises each week',
+      ['כמה אתה', 'כמה פעמים', 'מתאמן', 'פעילות', 'ספורט', 'הולך', 'זז', 'how much', 'how often', 'exercise', 'activity', 'sport', 'walk'],
+      'רוב היום אני על האופנוע עם הדואר. כמעט לא הולך ולא מתאמן בכלל.', "Most of the day I'm on the scooter with the mail. I hardly walk and never exercise.")],
+    h_yankel: [A('לשאול את יאנקל כמה פעמים בשבוע הוא אוכל דגים', 'Ask Yankel how many times a week he eats fish',
+      ['דג', 'כמה פעמים', 'אוכל', 'אכלת', 'תזונה', 'fish', 'how often', 'eat', 'diet'],
+      'דווקא בגלל שאני דייג אני מוכר את כל הדגים… אוכל דג אולי פעם בחודש.', 'Being a fisherman, I sell all the fish… I eat fish maybe once a month.')],
+    h_gadi: [A('לשאול את גדי ממתי התחילו הכאבים וכמה הוא מעשן', 'Ask Gadi when the pain started and how much he smokes',
+      WHEN.concat(['מעשן', 'סיגריות', 'עישון', 'smok', 'cigarette']),
+      'הכאבים התחילו לפני כמה חודשים. ואני מעשן קופסה ביום כבר 30 שנה.', "The pain started a few months ago. And I've smoked a pack a day for 30 years.")],
+    h_betty: [A('לשאול את בטי כמה היא ישנה ומה גורם לה ללחץ', 'Ask Betty how much she sleeps and what stresses her',
+      ['ישנה', 'שינה', 'לישון', 'כמה שעות', 'מלחיץ', 'לחוצה', 'מתח', 'sleep', 'stress', 'hours'],
+      'אני קמה ב-3 בלילה לאפות, ישנה בקושי 4 שעות, והמאפייה מלאה בלחץ.', 'I get up at 3am to bake, sleep barely 4 hours, and the bakery is full of stress.')],
+    h_ant: [A('לשאול את אבא נמלה מה ההרגלים של המושבה', "Ask Daddy Ant about the colony's habits",
+      ['הרגל', 'מה הם עושים', 'מה אתם', 'אוכלים', 'מעשנים', 'עישון', 'זזים', 'habit', 'what do', 'eat', 'smok', 'move'],
+      'הנמלים אוכלים הרבה סוכר, כמעט לא יוצאים מהקן, וכמה צעירים התחילו לעשן.', 'The ants eat lots of sugar, hardly leave the nest, and some young ones started smoking.')],
+    h_whale: [
+      A('לשאול את אמא לוויתן איפה בדיוק הכאב ולפני כמה זמן הוא התחיל', 'Ask Mama Whale where exactly the pain is and how long ago it started',
+        WHEN.concat(['איפה', 'כואב', 'הכאב', 'where', 'pain', 'hurt']),
+        'הלחץ באמצע החזה ומקרין ליד שמאל וללסת. זה התחיל לפני רבע שעה.', 'The pressure is mid-chest, spreading to his left arm and jaw. It started fifteen minutes ago.'),
+      A('לשאול את אמא לוויתן אם בעלה בהכרה ונושם', 'Ask Mama Whale if her husband is conscious and breathing', BREATH,
+        'הוא התמוטט עכשיו! הוא לא מגיב ולא נושם!', "He just collapsed! He isn't responding and isn't breathing!")],
+    h_ducky: [A('לשאול את Mr_Ducky מה הכפריים אוכלים ועושים ביום', 'Ask Mr_Ducky what the villagers eat and do all day',
+      ['אוכלים', 'מה הם', 'עושים', 'הרגל', 'מעשנים', 'זזים', 'eat', 'what do', 'habit', 'smok', 'move'],
+      'הם אוכלים עוגות ובשר מטוגן כל היום, יושבים ליד התנור ולא זזים.', 'They eat cake and fried meat all day, sit by the furnace and never move.')],
+    h_shaked: [
+      A('לשאול את שקד אם הבעלים בהכרה ונושם', 'Ask Shaked if his owner is conscious and breathing', BREATH,
+        'עכשיו הוא נפל! הוא לא מגיב ולא נושם! הב!', "Now he's collapsed! He isn't responding or breathing! Woof!"),
+      A('לשאול את שקד מה הבעלים מרגיש ואיפה כואב לו', 'Ask Shaked what his owner feels and where it hurts',
+        ['איפה', 'כואב', 'מרגיש', 'מתי', 'where', 'pain', 'hurt', 'feel', 'when'],
+        'הוא אומר שלוחץ לו בחזה, כואבת לו היד השמאלית והוא מזיע.', 'He says his chest feels tight, his left arm hurts and he is sweating.')],
+    h_tzvi: [A('לשאול את דוד צבי מה כבר ידוע לו מהמחקר', 'Ask Uncle Tzvi what his research has found so far', KNOW,
+      'ראיתי שאנשים עם פלאק קטן קיבלו התקף לב פתאומי, בלי שום אזהרה.', 'I saw people with small plaque get a sudden heart attack with no warning.')],
+    h_elephant: [A('לשאול את אח סטרוברי אלפנט מה גילה עד עכשיו', 'Ask Brother Strawberry Elephant what he has found so far', KNOW,
+      'גיליתי שמעשנים ואנשים עם לחץ דם גבוה מקבלים פלאק מוקדם יותר.', 'I found that smokers and people with high blood pressure get plaque earlier.')],
+    h_legend: [A('לשאול את ג\'ורג\' האגדי מה הוא כבר יודע', 'Ask Legendary George what he already knows', KNOW,
+      'שמעתי שבהתקף לב כל דקה חשובה, אבל לא הבנתי למה.', "I heard every minute counts in a heart attack, but I don't get why.")]
+  };
+  for (const list of [CAST, MINECRAFT, PLANET]) for (const ch of list) {
+    if (HELLO[ch.id]) ch.hello = { he: HELLO[ch.id][0], en: HELLO[ch.id][1] };
+    if (!ch.scenarios) continue;
+    ch.scenarios.forEach((sc, i) => { const a = ASKS[ch.id]; if (a) sc.ask = a[Math.min(i, a.length - 1)]; });
+  }
+  Object.assign(PATIENT_LINES, {
+    unclear: { he: 'לא הבנתי… מה אתה צריך ממני?', en: "I don't understand… what do you need from me?" },
+    nonsense: { he: 'אתה יכול להפסיק להתעסק בשטויות ולעזור לי כבר?', en: 'Can you stop messing around and help me already?' },
+    thanks: { he: 'תודה על העזרה!', en: 'Thanks for the help!' },
+    askFirst: { he: 'זה עוזר, אבל עוד לא שאלת אותי מה בדיוק קורה איתי…', en: "That helps, but you haven't asked me what exactly is going on with me…" }
+  });
+  const PARTIAL = [
+    { he: 'זה עוזר, תודה. יש עוד משהו שחשוב שאדע?', en: 'That helps, thanks. Is there anything else I should know?' },
+    { he: 'אוקיי, הבנתי את זה. מה עוד אני יכול לעשות?', en: 'Okay, I get that. What else can I do?' },
+    { he: 'נשמע הגיוני. אפשר עוד הסבר?', en: 'Makes sense. Can you explain a bit more?' }
+  ];
+  const LOST = [
+    { he: 'לא בטוח שהבנתי איך זה קשור לבעיה שלי…', en: "I'm not sure how that relates to my problem…" },
+    { he: 'זה לא ממש עונה לי. אפשר לנסות להסביר אחרת?', en: "That doesn't really answer me. Could you explain differently?" }
+  ];
 
   const MODES = ['mixed', 'heart', 'classic'];
 
@@ -423,7 +599,7 @@ Strict rules:
 - The player succeeds only if they: saved the patient, helped them take the right medication, or gave accurate medical/preventive guidance for the problem asked.
 - Keep replies to 1-3 short sentences, in the player's language.`;
 
-  const HEART = { CAST, MINECRAFT, PLANET, INFO, MODES, AI_RULES, PRESETS, TASKS, GREET_WORDS, FUND_WORDS, PATIENT_LINES };
+  const HEART = { CAST, MINECRAFT, PLANET, INFO, MODES, AI_RULES, PRESETS, TASKS, GREET_WORDS, FUND_WORDS, PATIENT_LINES, PARTIAL, LOST };
   if (typeof module !== 'undefined' && module.exports) module.exports = HEART;
   else root.HEART = HEART;
 })(typeof window !== 'undefined' ? window : globalThis);

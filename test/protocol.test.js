@@ -4,6 +4,7 @@
 process.env.PORT = process.env.PORT || '3917';
 process.env.GEORGE_TALK_MS = '1500';
 process.env.TEST_HOOKS = '1';
+process.env.ALLOW_CLASSIC_MODE = '1';
 const assert = require('assert');
 const { server } = require('../server.js');
 const URL = `ws://localhost:${process.env.PORT}/ws`;
@@ -136,19 +137,21 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓',
   ok((await b.req('chat:send', { channel: 'global', text: 'back' })).ok, 'unmuted player can talk again');
 
   await sleep(600);
-  await b.req('chat:send', { channel: 'help', text: 'איך עונים לשיחה?' });
+  const tk = await b.req('help:start', {});
   const botFirst = await b.wait((m) => m.t === 'help' && m.d.msg.from.role === 'bot');
-  ok(/AI/.test(botFirst.msg.text), 'help bot declares itself AI in first reply');
+  ok(/AI/.test(botFirst.msg.text) && botFirst.msg.from.name === 'BOTGEORGE', 'BOTGEORGE opens the help chat and declares itself AI');
+  await sleep(600);
+  await b.req('chat:send', { channel: 'help', text: 'איך עונים לשיחה?' });
   const tickets = await host.wait((m) => m.t === 'tickets' && m.d.length && m.d[0].aiAnswer);
   ok(tickets[0].summary && tickets[0].category && tickets[0].howTo, 'managers see summary, AI answer and handling tip');
-  ok((await host.req('help:claim', { ticketId: jb.playerId })).ok, 'host claims ticket');
-  ok((await a.req('chat:send', { channel: 'help', ticketId: jb.playerId, text: 'x' })).error === 'claimed', 'second manager blocked while claimed');
-  await host.req('chat:send', { channel: 'help', ticketId: jb.playerId, text: 'אני כאן לעזור' });
+  ok((await host.req('help:claim', { ticketId: tk.ticketId })).ok, 'host claims ticket');
+  ok((await a.req('chat:send', { channel: 'help', ticketId: tk.ticketId, text: 'x' })).error === 'claimed', 'second manager blocked while claimed');
+  await host.req('chat:send', { channel: 'help', ticketId: tk.ticketId, text: 'אני כאן לעזור' });
   await b.wait((m) => m.t === 'help' && m.d.msg.text === 'אני כאן לעזור');
   ok(true, 'player received manager reply');
-  await host.req('help:release', { ticketId: jb.playerId });
+  await host.req('help:release', { ticketId: tk.ticketId });
   await sleep(600);
-  ok((await a.req('chat:send', { channel: 'help', ticketId: jb.playerId, text: 'Alice here' })).ok, 'another manager can take over after release');
+  ok((await a.req('chat:send', { channel: 'help', ticketId: tk.ticketId, text: 'Alice here' })).ok, 'another manager can take over after release');
 
   await sleep(600);
   await b.req('chat:send', { channel: 'lb', presetId: 'myrank' });
@@ -169,7 +172,7 @@ const ok = (cond, msg) => { assert.ok(cond, msg); passed++; console.log('  ✓',
 
   ok((await host.req('game:end', {})).ok, 'host ends game');
   const over = await a.wait((m) => m.t === 'room' && m.d.phase === 'over');
-  ok(over.end && over.end.stage === 'feedback', 'everyone moves to Polls & Feedback');
+  ok(over.end && over.end.stage === 'board' && !over.end.stages.includes('feedback'), 'no polls: everyone moves straight to the leaderboard');
   ok((await host.req('game:lobby', {})).ok, 'back to lobby');
 
   console.log(`\nAll ${passed} checks passed.`);
